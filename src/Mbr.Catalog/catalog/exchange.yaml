@@ -1,0 +1,166 @@
+# Exchange Online configuration, read and written with the ExchangeOnlineManagement module (app-only, certificate).
+# listPath is the cmdlet noun: Get-/New-/Set-/Remove-{noun}. Only properties the New/Set cmdlet accepts are sent back.
+
+- type: exchange.organizationConfig
+  workload: exchange
+  displayName: Organization settings
+  api: exo
+  listPath: OrganizationConfig
+  singleton: true
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  strip: [Name, Guid, Identity, IsDehydrated, IsMixedMode, MaxConcurrentMigrations, RBACConfigurationVersion, ObjectVersion, IsLicensingEnforced, AdfsAuthenticationConfiguration]
+
+- type: exchange.transportConfig
+  workload: exchange
+  displayName: Transport settings
+  api: exo
+  listPath: TransportConfig
+  singleton: true
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  strip: [Name, Guid, Identity]
+
+- type: exchange.adminAuditLogConfig
+  workload: exchange
+  displayName: Admin audit log settings
+  api: exo
+  listPath: AdminAuditLogConfig
+  singleton: true
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  strip: [Name, Guid, Identity]
+
+- type: exchange.acceptedDomain
+  workload: exchange
+  displayName: Accepted domains
+  api: exo
+  listPath: AcceptedDomain
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [DomainName]
+  restore:
+    updateOnly: true
+    notes: Domains are added and verified in the Microsoft 365 admin center; a restore only resets their settings (domain type, default).
+
+- type: exchange.remoteDomain
+  workload: exchange
+  displayName: Remote domains
+  api: exo
+  listPath: RemoteDomain
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: exchange.transportRule
+  workload: exchange
+  displayName: Mail flow rules
+  api: exo
+  listPath: TransportRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { skip: [RuleVersion, Description] }
+
+- type: exchange.inboundConnector
+  workload: exchange
+  displayName: Inbound connectors
+  api: exo
+  listPath: InboundConnector
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  secretPaths: [TlsSenderCertificateName]
+
+- type: exchange.outboundConnector
+  workload: exchange
+  displayName: Outbound connectors
+  api: exo
+  listPath: OutboundConnector
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+
+- type: exchange.journalRule
+  workload: exchange
+  displayName: Journal rules
+  api: exo
+  listPath: JournalRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+
+- type: exchange.dkimSigningConfig
+  workload: exchange
+  displayName: DKIM signing
+  api: exo
+  listPath: DkimSigningConfig
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Domain]
+  strip: [Selector1PublicKey, Selector2PublicKey, Selector1CNAME, Selector2CNAME, KeyCreationTime, RotateOnDate, LastChecked, Status]
+  restore:
+    updateOnly: true
+    notes: DKIM keys aren't restorable; only signing being enabled or disabled is.
+
+- type: exchange.sharingPolicy
+  workload: exchange
+  displayName: Sharing policies
+  api: exo
+  listPath: SharingPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: Default }
+
+- type: exchange.owaMailboxPolicy
+  workload: exchange
+  displayName: Outlook on the web policies
+  api: exo
+  listPath: OwaMailboxPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: exchange.mobileDeviceMailboxPolicy
+  workload: exchange
+  displayName: Mobile device mailbox policies
+  api: exo
+  listPath: MobileDeviceMailboxPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: exchange.roleAssignmentPolicy
+  workload: exchange
+  displayName: Role assignment policies
+  api: exo
+  listPath: RoleAssignmentPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: exchange.authenticationPolicy
+  workload: exchange
+  displayName: Authentication policies
+  api: exo
+  listPath: AuthenticationPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+
+- type: exchange.addressBookPolicy
+  workload: exchange
+  displayName: Address book policies
+  api: exo
+  listPath: AddressBookPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]

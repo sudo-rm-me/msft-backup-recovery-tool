@@ -1,0 +1,140 @@
+# Microsoft Teams: team settings and channels through Graph; tenant policies through the MicrosoftTeams module.
+
+- type: teams.team
+  workload: teams
+  displayName: Teams (settings and channels)
+  listPath: teams
+  getItem: true
+  dependsOn: [entra.group]
+  children:
+    - name: channels
+      path: teams/{id}/channels
+      strip: [id, webUrl, createdDateTime, email, tenantId, isArchived, filesFolderWebUrl, isFavoriteByDefault]
+      restore: { mode: add, keys: [displayName] }
+  restore:
+    updateOnly: true
+    readOnly: [webUrl, internalId, createdDateTime, isArchived, tenantId, summary, specialization, visibility, isMembershipLimitedToOwners, classification]
+    notes: A team is restored with its group; restoring the group from the recycle bin brings its team back.
+
+- type: teams.appSettings
+  workload: teams
+  displayName: Teams app settings
+  version: beta
+  listPath: teamwork/teamsAppSettings
+  singleton: true
+  restore: { updateOnly: true }
+
+- type: teams.meetingPolicy
+  workload: teams
+  displayName: Meeting policies
+  api: teams
+  listPath: CsTeamsMeetingPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.messagingPolicy
+  workload: teams
+  displayName: Messaging policies
+  api: teams
+  listPath: CsTeamsMessagingPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.callingPolicy
+  workload: teams
+  displayName: Calling policies
+  api: teams
+  listPath: CsTeamsCallingPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.appPermissionPolicy
+  workload: teams
+  displayName: App permission policies
+  api: teams
+  listPath: CsTeamsAppPermissionPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.appSetupPolicy
+  workload: teams
+  displayName: App setup policies
+  api: teams
+  listPath: CsTeamsAppSetupPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.channelsPolicy
+  workload: teams
+  displayName: Teams policies (channels)
+  api: teams
+  listPath: CsTeamsChannelsPolicy
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  powerShell: { createIdentityPrefix: "Tag:" }
+
+- type: teams.federationConfiguration
+  workload: teams
+  displayName: External access
+  api: teams
+  listPath: CsTenantFederationConfiguration
+  singleton: true
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  strip: [Identity]
+
+- type: teams.clientConfiguration
+  workload: teams
+  displayName: Teams client settings
+  api: teams
+  listPath: CsTeamsClientConfiguration
+  singleton: true
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  strip: [Identity]
+
+- type: teams.meetingConfiguration
+  workload: teams
+  displayName: Meeting settings
+  api: teams
+  listPath: CsTeamsMeetingConfiguration
+  singleton: true
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  strip: [Identity]
+
+- type: teams.guestMeetingConfiguration
+  workload: teams
+  displayName: Guest access (meetings)
+  api: teams
+  listPath: CsTeamsGuestMeetingConfiguration
+  singleton: true
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  strip: [Identity]
+
+- type: teams.guestMessagingConfiguration
+  workload: teams
+  displayName: Guest access (messaging)
+  api: teams
+  listPath: CsTeamsGuestMessagingConfiguration
+  singleton: true
+  idProperty: Identity
+  nameProperty: Identity
+  matchKeys: [Identity]
+  strip: [Identity]

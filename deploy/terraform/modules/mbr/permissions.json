@@ -1,0 +1,67 @@
+{
+  "_comment": "Application permissions for the backup and restore apps. Must match src/Mbr.Core/Permissions/PermissionCatalog.cs (a unit test checks).",
+  "backup": {
+    "graph": [
+      "Application.Read.All",
+      "BackupRestore-Configuration.Read.All",
+      "BackupRestore-Monitor.Read.All",
+      "Calendars.Read",
+      "Channel.ReadBasic.All",
+      "Contacts.Read",
+      "DeviceManagementApps.Read.All",
+      "DeviceManagementConfiguration.Read.All",
+      "DeviceManagementRBAC.Read.All",
+      "DeviceManagementScripts.Read.All",
+      "DeviceManagementServiceConfig.Read.All",
+      "Directory.Read.All",
+      "Files.Read.All",
+      "GroupMember.Read.All",
+      "Mail.Read",
+      "MailboxSettings.Read",
+      "Policy.Read.All",
+      "RecordsManagement.Read.All",
+      "RoleManagement.Read.Directory",
+      "SharePointTenantSettings.Read.All",
+      "Sites.Read.All",
+      "Team.ReadBasic.All",
+      "TeamSettings.Read.All",
+      "TeamworkAppSettings.Read.All",
+      "User.Read.All"
+    ],
+    "exchange": [
+      "Exchange.ManageAsApp"
+    ]
+  },
+  "restore": {
+    "graph": [
+      "Application.ReadWrite.All",
+      "BackupRestore-Restore.ReadWrite.All",
+      "Calendars.ReadWrite",
+      "Channel.Create",
+      "Contacts.ReadWrite",
+      "DeviceManagementApps.ReadWrite.All",
+      "DeviceManagementConfiguration.ReadWrite.All",
+      "DeviceManagementRBAC.ReadWrite.All",
+      "DeviceManagementScripts.ReadWrite.All",
+      "DeviceManagementServiceConfig.ReadWrite.All",
+      "Directory.ReadWrite.All",
+      "Files.ReadWrite.All",
+      "Group.ReadWrite.All",
+      "Mail.ReadWrite",
+      "Policy.Read.All",
+      "Policy.ReadWrite.ConditionalAccess",
+      "RecordsManagement.ReadWrite.All",
+      "RoleManagement.ReadWrite.Directory",
+      "SharePointTenantSettings.ReadWrite.All",
+      "Sites.ReadWrite.All",
+      "Team.ReadBasic.All",
+      "TeamSettings.ReadWrite.All",
+      "TeamworkAppSettings.ReadWrite.All",
+      "User.Read.All",
+      "User.ReadWrite.All"
+    ],
+    "exchange": [
+      "Exchange.ManageAsApp"
+    ]
+  }
+}

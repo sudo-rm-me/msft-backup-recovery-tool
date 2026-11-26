@@ -1,0 +1,204 @@
+# Microsoft Entra ID resource types. See ResourceDefinition for the schema.
+# References use "directoryObject" when an ID can be a user, group or service principal.
+
+- type: entra.namedLocation
+  workload: entra
+  displayName: Named locations
+  listPath: identity/conditionalAccess/namedLocations
+  restore: {}
+
+- type: entra.authenticationStrengthPolicy
+  workload: entra
+  displayName: Authentication strengths (custom)
+  listPath: policies/authenticationStrengthPolicies
+  skip: [{ property: policyType, value: builtIn }]
+  strip: [policyType, requirementsSatisfied]
+  restore:
+    readOnly: [combinationConfigurations]
+
+- type: entra.conditionalAccessPolicy
+  workload: entra
+  displayName: Conditional Access policies
+  listPath: identity/conditionalAccess/policies
+  dependsOn: [entra.namedLocation, entra.group, entra.user, entra.authenticationStrengthPolicy]
+  references:
+    - { path: "conditions.users.includeUsers[*]", type: entra.user }
+    - { path: "conditions.users.excludeUsers[*]", type: entra.user }
+    - { path: "conditions.users.includeGroups[*]", type: entra.group }
+    - { path: "conditions.users.excludeGroups[*]", type: entra.group }
+    - { path: "conditions.locations.includeLocations[*]", type: entra.namedLocation }
+    - { path: "conditions.locations.excludeLocations[*]", type: entra.namedLocation }
+    - { path: "grantControls.authenticationStrength.id", type: entra.authenticationStrengthPolicy }
+  strip: [templateId, partialEnablementStrategy]
+  notes: Policies are restored in their saved state. Consider restoring as report-only first.
+
+- type: entra.authenticationMethodsPolicy
+  workload: entra
+  displayName: Authentication methods policy
+  listPath: policies/authenticationMethodsPolicy
+  singleton: true
+  references:
+    - { path: "authenticationMethodConfigurations[*].includeTargets[*].id", type: entra.group }
+    - { path: "authenticationMethodConfigurations[*].excludeTargets[*].id", type: entra.group }
+  strip: [policyVersion, reconfirmationInDays]
+  restore:
+    updateOnly: true
+    readOnly: [authenticationMethodConfigurations]
+    notes: Method configurations are restored individually through the authentication method configuration types.
+
+- type: entra.authorizationPolicy
+  workload: entra
+  displayName: Authorization policy (user settings)
+  listPath: policies/authorizationPolicy
+  singleton: true
+  restore: { updateOnly: true }
+
+- type: entra.securityDefaults
+  workload: entra
+  displayName: Security defaults
+  listPath: policies/identitySecurityDefaultsEnforcementPolicy
+  singleton: true
+  restore: { updateOnly: true }
+
+- type: entra.crossTenantAccessDefault
+  workload: entra
+  displayName: Cross-tenant access (default settings)
+  listPath: policies/crossTenantAccessPolicy/default
+  singleton: true
+  strip: [isServiceDefault]
+  restore: { updateOnly: true }
+
+- type: entra.crossTenantAccessPartner
+  workload: entra
+  displayName: Cross-tenant access (organizations)
+  listPath: policies/crossTenantAccessPolicy/partners
+  itemPath: policies/crossTenantAccessPolicy/partners/{id}
+  idProperty: tenantId
+  nameProperty: tenantId
+  matchKeys: [tenantId]
+  strip: [isServiceProvider, isInMultiTenantOrganization]
+
+- type: entra.groupSetting
+  workload: entra
+  displayName: Directory settings
+  listPath: groupSettings
+  matchKeys: [templateId]
+
+- type: entra.user
+  workload: entra
+  displayName: Users
+  listPath: "users?$select=id,userPrincipalName,displayName,givenName,surname,mail,mailNickname,accountEnabled,usageLocation,jobTitle,department,officeLocation,companyName,employeeId,employeeType,mobilePhone,businessPhones,city,country,state,streetAddress,postalCode,preferredLanguage,userType,otherMails,onPremisesSyncEnabled,onPremisesImmutableId,assignedLicenses,ageGroup,consentProvidedForMinor"
+  nameProperty: userPrincipalName
+  matchKeys: [userPrincipalName]
+  restore:
+    recycleBin: true
+    readOnly: [assignedLicenses, onPremisesImmutableId, onPremisesSyncEnabled]
+    notes: Recreated users get a new random password and must reset it. Synced users should be restored on-premises.
+
+- type: entra.group
+  workload: entra
+  displayName: Groups
+  listPath: "groups?$select=id,displayName,description,mailEnabled,mailNickname,securityEnabled,groupTypes,membershipRule,membershipRuleProcessingState,visibility,isAssignableToRole,classification,theme,preferredLanguage,resourceBehaviorOptions,resourceProvisioningOptions,onPremisesSyncEnabled"
+  dependsOn: [entra.user]
+  children:
+    - name: members
+      path: "groups/{id}/members?$select=id"
+      strip: []
+      restore: { mode: ref, path: "groups/{id}/members/$ref" }
+    - name: owners
+      path: "groups/{id}/owners?$select=id"
+      restore: { mode: ref, path: "groups/{id}/owners/$ref" }
+  references:
+    - { path: "members[*].id", type: directoryObject }
+    - { path: "owners[*].id", type: directoryObject }
+  matchKeys: [displayName, mailNickname]
+  restore:
+    recycleBin: true
+    readOnly: [onPremisesSyncEnabled]
+    createOnly: [mailEnabled, securityEnabled, groupTypes, mailNickname, isAssignableToRole, resourceBehaviorOptions, resourceProvisioningOptions]
+    notes: Dynamic group members are recomputed by Entra and are not written back.
+
+- type: entra.administrativeUnit
+  workload: entra
+  displayName: Administrative units
+  listPath: directory/administrativeUnits
+  dependsOn: [entra.user, entra.group]
+  children:
+    - name: members
+      path: "directory/administrativeUnits/{id}/members?$select=id"
+      restore: { mode: ref, path: "directory/administrativeUnits/{id}/members/$ref" }
+  references:
+    - { path: "members[*].id", type: directoryObject }
+  restore: { recycleBin: true }
+
+- type: entra.application
+  workload: entra
+  displayName: App registrations
+  listPath: applications
+  strip: [publisherDomain, appId, passwordCredentials, keyCredentials]
+  secretPaths: [passwordCredentials, keyCredentials]
+  matchKeys: [displayName]
+  restore:
+    recycleBin: true
+    readOnly: [appId, identifierUris]
+    notes: Client secrets and certificate private keys are never readable through Graph; add new credentials after restoring. A recreated app gets a new client ID.
+
+- type: entra.servicePrincipal
+  workload: entra
+  displayName: Enterprise apps (service principals)
+  listPath: servicePrincipals
+  dependsOn: [entra.user, entra.group]
+  children:
+    - name: appRoleAssignedTo
+      path: "servicePrincipals/{id}/appRoleAssignedTo"
+      strip: [id, creationTimestamp, deletedDateTime, principalDisplayName, principalType, resourceDisplayName, resourceId]
+      restore: { mode: add, keys: [principalId, appRoleId], parentIdProperty: resourceId }
+  references:
+    - { path: "appRoleAssignedTo[*].principalId", type: directoryObject }
+  matchKeys: [appId]
+  strip: [passwordCredentials, keyCredentials, signInAudience, publisherName, verifiedPublisher, info]
+  secretPaths: [passwordCredentials, keyCredentials]
+  restore:
+    recycleBin: true
+    createOnly: [appId]
+    readOnly: [appOwnerOrganizationId, appDisplayName, servicePrincipalNames, servicePrincipalType, replyUrls, appRoles, oauth2PermissionScopes, alternativeNames, homepage, logoutUrl, resourceSpecificApplicationPermissions, applicationTemplateId, appDescription, disabledByMicrosoftStatus, isAuthorizationServiceEnabled, samlSingleSignOnSettings, tokenEncryptionKeyId, addIns]
+    notes: Restoring creates the service principal for the same appId; Microsoft first-party apps are left alone.
+
+- type: entra.roleDefinition
+  workload: entra
+  displayName: Custom directory roles
+  listPath: "roleManagement/directory/roleDefinitions?$filter=isBuiltIn eq false"
+  itemPath: roleManagement/directory/roleDefinitions/{id}
+  strip: [inheritsPermissionsFrom, version]
+  restore:
+    readOnly: [isBuiltIn]
+
+- type: entra.directoryRoleAssignment
+  workload: entra
+  displayName: Directory role assignments
+  listPath: roleManagement/directory/roleAssignments
+  nameProperty: principalId
+  dependsOn: [entra.user, entra.group, entra.servicePrincipal, entra.roleDefinition, entra.administrativeUnit]
+  references:
+    - { path: principalId, type: directoryObject }
+    - { path: roleDefinitionId, type: entra.roleDefinition, keepUnknown: true }
+  matchKeys: [principalId, roleDefinitionId, directoryScopeId]
+  restore:
+    updateMethod: NONE
+    notes: Role assignments are immutable; changes are restored by recreating the assignment.
+
+- type: entra.roleEligibilitySchedule
+  workload: entra
+  displayName: PIM eligible role assignments
+  listPath: roleManagement/directory/roleEligibilitySchedules
+  nameProperty: principalId
+  dependsOn: [entra.user, entra.group, entra.roleDefinition]
+  references:
+    - { path: principalId, type: directoryObject }
+    - { path: roleDefinitionId, type: entra.roleDefinition, keepUnknown: true }
+  matchKeys: [principalId, roleDefinitionId, directoryScopeId]
+  strip: [status, createdUsing, modifiedDateTime]
+  restore:
+    createPath: roleManagement/directory/roleEligibilityScheduleRequests
+    updateMethod: NONE
+    notes: Restored as a new eligibility request (action adminAssign) with the saved schedule.

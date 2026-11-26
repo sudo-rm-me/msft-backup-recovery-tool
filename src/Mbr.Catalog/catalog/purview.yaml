@@ -1,0 +1,95 @@
+# Microsoft Purview, through Security & Compliance PowerShell (Connect-IPPSSession, app-only, certificate).
+
+- type: purview.sensitivityLabel
+  workload: purview
+  displayName: Sensitivity labels
+  api: ipps
+  listPath: Label
+  idProperty: Guid
+  nameProperty: DisplayName
+  matchKeys: [Name]
+  strip: [ImmutableId, Workload, Policy, Mode, Disabled, Priority]
+  powerShell: { skip: [Settings, LocaleSettings, LabelActions, Conditions] }
+  notes: Encryption settings that use templates or user-defined permissions may need checking after a restore.
+
+- type: purview.labelPolicy
+  workload: purview
+  displayName: Sensitivity label policies
+  api: ipps
+  listPath: LabelPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [purview.sensitivityLabel]
+  powerShell: { renames: { ScopedLabels: Labels } }
+
+- type: purview.retentionLabel
+  workload: purview
+  displayName: Retention labels
+  api: ipps
+  listPath: ComplianceTag
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  restore:
+    createOnly: [IsRecordLabel, Regulatory, RetentionType]
+
+- type: purview.retentionPolicy
+  workload: purview
+  displayName: Retention policies
+  api: ipps
+  listPath: RetentionCompliancePolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  notes: Locations are restored as captured; adaptive scopes must exist in the tenant.
+
+- type: purview.retentionRule
+  workload: purview
+  displayName: Retention rules
+  api: ipps
+  listPath: RetentionComplianceRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [purview.retentionPolicy, purview.retentionLabel]
+
+- type: purview.dlpPolicy
+  workload: purview
+  displayName: DLP policies
+  api: ipps
+  listPath: DlpCompliancePolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [purview.sensitivityLabel]
+
+- type: purview.dlpRule
+  workload: purview
+  displayName: DLP rules
+  api: ipps
+  listPath: DlpComplianceRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [purview.dlpPolicy]
+  powerShell: { renames: { ParentPolicyName: Policy } }
+
+- type: purview.protectionAlert
+  workload: purview
+  displayName: Alert policies
+  api: ipps
+  listPath: ProtectionAlert
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsSystemRule }
+
+- type: purview.auditRetentionPolicy
+  workload: purview
+  displayName: Audit log retention policies
+  api: ipps
+  listPath: UnifiedAuditLogRetentionPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]

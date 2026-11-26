@@ -1,0 +1,27 @@
+bin/
+obj/
+*.user
+.vs/
+.vscode/
+.idea/
+node_modules/
+src/web/dist/
+*.db
+*.db-shm
+*.db-wal
+/data/
+appsettings.Development.local.json
+*.pfx
+*.pem
+TestResults/
+.env
+src/Mbr.Api/wwwroot/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+backend.tf

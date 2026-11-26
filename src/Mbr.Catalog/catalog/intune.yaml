@@ -1,0 +1,425 @@
+# Microsoft Intune resource types (Graph beta, which is where Intune's full surface lives).
+
+- type: intune.scopeTag
+  workload: intune
+  displayName: Scope tags
+  version: beta
+  listPath: deviceManagement/roleScopeTags
+  skip: [{ property: isBuiltIn, value: "true" }]
+  children:
+    - name: assignments
+      path: deviceManagement/roleScopeTags/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+  dependsOn: [entra.group]
+  restore:
+    readOnly: [isBuiltIn]
+
+- type: intune.assignmentFilter
+  workload: intune
+  displayName: Assignment filters
+  version: beta
+  listPath: deviceManagement/assignmentFilters
+  strip: [payloads]
+  references:
+    - { path: "roleScopeTags[*]", type: intune.scopeTag }
+  dependsOn: [intune.scopeTag]
+  restore:
+    createOnly: [platform]
+
+- type: intune.deviceCategory
+  workload: intune
+  displayName: Device categories
+  version: beta
+  listPath: deviceManagement/deviceCategories
+  references:
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [intune.scopeTag]
+
+- type: intune.deviceConfiguration
+  workload: intune
+  displayName: Device configuration profiles
+  version: beta
+  listPath: deviceManagement/deviceConfigurations
+  children: &assignments
+    - name: assignments
+      path: deviceManagement/deviceConfigurations/{id}/assignments
+      strip: [id, sourceId, source]
+      restore: { mode: assign }
+  references: &assignmentRefs
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "assignments[*].target.deviceAndAppManagementAssignmentFilterId", type: intune.assignmentFilter }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: &intuneDeps [entra.group, intune.assignmentFilter, intune.scopeTag]
+  secretPaths: [preSharedKey, "omaSettings[*].value"]
+  strip: [deviceManagementApplicabilityRuleOsEdition, deviceManagementApplicabilityRuleOsVersion, deviceManagementApplicabilityRuleDeviceMode]
+  notes: Encrypted OMA-URI values and Wi-Fi pre-shared keys are not returned by Graph and must be re-entered.
+
+- type: intune.settingsCatalogPolicy
+  workload: intune
+  displayName: Settings catalog policies
+  version: beta
+  listPath: deviceManagement/configurationPolicies
+  children:
+    - name: settings
+      path: "deviceManagement/configurationPolicies/{id}/settings?$expand=settingDefinitions($select=id)"
+      strip: [id, settingDefinitions]
+      restore: { mode: inline }
+    - name: assignments
+      path: deviceManagement/configurationPolicies/{id}/assignments
+      strip: [id, sourceId, source]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [settingCount, isAssigned, creationSource, priorityMetaData]
+  nameProperty: name
+  matchKeys: [name]
+  restore:
+    updateMethod: PUT
+
+- type: intune.compliancePolicy
+  workload: intune
+  displayName: Compliance policies
+  version: beta
+  listPath: "deviceManagement/deviceCompliancePolicies?$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)"
+  itemPath: deviceManagement/deviceCompliancePolicies/{id}
+  children:
+    - name: assignments
+      path: deviceManagement/deviceCompliancePolicies/{id}/assignments
+      strip: [id, sourceId, source]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "assignments[*].target.deviceAndAppManagementAssignmentFilterId", type: intune.assignmentFilter }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+    - { path: "scheduledActionsForRule[*].scheduledActionConfigurations[*].notificationTemplateId", type: intune.notificationTemplate }
+  dependsOn: [entra.group, intune.assignmentFilter, intune.scopeTag, intune.notificationTemplate]
+  strip: ["scheduledActionsForRule[*].id", "scheduledActionsForRule[*].scheduledActionConfigurations[*].id"]
+  restore:
+    createOnly: [scheduledActionsForRule]
+
+- type: intune.complianceScript
+  workload: intune
+  displayName: Compliance scripts (custom compliance)
+  version: beta
+  listPath: deviceManagement/deviceComplianceScripts
+  getItem: true
+  references:
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [intune.scopeTag]
+
+- type: intune.notificationTemplate
+  workload: intune
+  displayName: Compliance notification templates
+  version: beta
+  listPath: "deviceManagement/notificationMessageTemplates?$expand=localizedNotificationMessages"
+  itemPath: deviceManagement/notificationMessageTemplates/{id}
+  references:
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [intune.scopeTag]
+  strip: ["localizedNotificationMessages[*].id", "localizedNotificationMessages[*].lastModifiedDateTime"]
+  restore:
+    createOnly: [localizedNotificationMessages]
+
+- type: intune.groupPolicyConfiguration
+  workload: intune
+  displayName: Administrative templates
+  version: beta
+  listPath: deviceManagement/groupPolicyConfigurations
+  children:
+    - name: definitionValues
+      path: "deviceManagement/groupPolicyConfigurations/{id}/definitionValues?$expand=definition($select=id,displayName,classType,categoryPath),presentationValues($expand=presentation($select=id))"
+      strip: [id]
+      restore: { mode: none }
+    - name: assignments
+      path: deviceManagement/groupPolicyConfigurations/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  notes: Definition values are restored with the administrative-template handler (updateDefinitionValues).
+
+- type: intune.endpointSecurityIntent
+  workload: intune
+  displayName: Endpoint security (legacy templates)
+  version: beta
+  listPath: deviceManagement/intents
+  children:
+    - name: settings
+      path: deviceManagement/intents/{id}/settings
+      strip: [id]
+      restore: { mode: none }
+    - name: assignments
+      path: deviceManagement/intents/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [isAssigned, isMigratingToConfigurationPolicy]
+  restore:
+    createPath: "deviceManagement/templates/{templateId}/createInstance"
+    notes: Recreated from the same template with the saved settings.
+
+- type: intune.deviceManagementScript
+  workload: intune
+  displayName: PowerShell scripts (Windows)
+  version: beta
+  listPath: deviceManagement/deviceManagementScripts
+  getItem: true
+  children:
+    - name: assignments
+      path: deviceManagement/deviceManagementScripts/{id}/assignments
+      strip: [id]
+      restore: { mode: assign, bodyProperty: deviceManagementScriptAssignments }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+
+- type: intune.deviceShellScript
+  workload: intune
+  displayName: Shell scripts (macOS)
+  version: beta
+  listPath: deviceManagement/deviceShellScripts
+  getItem: true
+  children:
+    - name: assignments
+      path: deviceManagement/deviceShellScripts/{id}/assignments
+      strip: [id]
+      restore: { mode: assign, bodyProperty: deviceManagementScriptAssignments }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+
+- type: intune.deviceHealthScript
+  workload: intune
+  displayName: Remediations
+  version: beta
+  listPath: deviceManagement/deviceHealthScripts
+  getItem: true
+  skip: [{ property: isGlobalScript, value: "true" }]
+  children:
+    - name: assignments
+      path: deviceManagement/deviceHealthScripts/{id}/assignments
+      strip: [id]
+      restore: { mode: assign, bodyProperty: deviceHealthScriptAssignments }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [highestAvailableVersion, isGlobalScript, deviceHealthScriptType]
+
+- type: intune.iosAppProtection
+  workload: intune
+  displayName: App protection (iOS)
+  version: beta
+  listPath: "deviceAppManagement/iosManagedAppProtections?$expand=apps,assignments"
+  itemPath: deviceAppManagement/iosManagedAppProtections/{id}
+  children:
+    - name: apps
+      path: ""
+      expanded: true
+      strip: [id, version]
+      restore: { mode: assign, path: "deviceAppManagement/iosManagedAppProtections/{id}/targetApps" }
+    - name: assignments
+      path: ""
+      expanded: true
+      strip: [id]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [entra.group, intune.scopeTag]
+  strip: [isAssigned, deployedAppCount]
+
+- type: intune.androidAppProtection
+  workload: intune
+  displayName: App protection (Android)
+  version: beta
+  listPath: "deviceAppManagement/androidManagedAppProtections?$expand=apps,assignments"
+  itemPath: deviceAppManagement/androidManagedAppProtections/{id}
+  children:
+    - name: apps
+      path: ""
+      expanded: true
+      strip: [id, version]
+      restore: { mode: assign, path: "deviceAppManagement/androidManagedAppProtections/{id}/targetApps" }
+    - name: assignments
+      path: ""
+      expanded: true
+      strip: [id]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [entra.group, intune.scopeTag]
+  strip: [isAssigned, deployedAppCount]
+
+- type: intune.windowsAppProtection
+  workload: intune
+  displayName: App protection (Windows)
+  version: beta
+  listPath: "deviceAppManagement/windowsManagedAppProtections?$expand=apps,assignments"
+  itemPath: deviceAppManagement/windowsManagedAppProtections/{id}
+  children:
+    - name: apps
+      path: ""
+      expanded: true
+      strip: [id, version]
+      restore: { mode: assign, path: "deviceAppManagement/windowsManagedAppProtections/{id}/targetApps" }
+    - name: assignments
+      path: ""
+      expanded: true
+      strip: [id]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [entra.group, intune.scopeTag]
+  strip: [isAssigned, deployedAppCount]
+
+- type: intune.managedAppConfiguration
+  workload: intune
+  displayName: App configuration (managed apps)
+  version: beta
+  listPath: "deviceAppManagement/targetedManagedAppConfigurations?$expand=apps,assignments"
+  itemPath: deviceAppManagement/targetedManagedAppConfigurations/{id}
+  children:
+    - name: apps
+      path: ""
+      expanded: true
+      strip: [id, version]
+      restore: { mode: assign, path: "deviceAppManagement/targetedManagedAppConfigurations/{id}/targetApps" }
+    - name: assignments
+      path: ""
+      expanded: true
+      strip: [id]
+      restore: { mode: assign }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [entra.group, intune.scopeTag]
+  strip: [isAssigned, deployedAppCount]
+
+- type: intune.managedDeviceAppConfiguration
+  workload: intune
+  displayName: App configuration (managed devices)
+  version: beta
+  listPath: deviceAppManagement/mobileAppConfigurations
+  children:
+    - name: assignments
+      path: deviceAppManagement/mobileAppConfigurations/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+
+- type: intune.mobileApp
+  workload: intune
+  displayName: Apps (metadata and assignments)
+  version: beta
+  listPath: "deviceAppManagement/mobileApps?$filter=isAssigned eq true or isAssigned eq false"
+  itemPath: deviceAppManagement/mobileApps/{id}
+  children:
+    - name: assignments
+      path: deviceAppManagement/mobileApps/{id}/assignments
+      strip: [id]
+      restore: { mode: assign, bodyProperty: mobileAppAssignments }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [isAssigned, uploadState, publishingState, committedContentVersion, size, dependentAppCount, supersedingAppCount, supersededAppCount, largeIcon]
+  notes: App binaries (.intunewin, .msi, .ipa) can't be downloaded from Intune, so only store/web-link apps are recreated. Assignments are restored for apps that still exist.
+
+- type: intune.autopilotProfile
+  workload: intune
+  displayName: Windows Autopilot profiles
+  version: beta
+  listPath: deviceManagement/windowsAutopilotDeploymentProfiles
+  children:
+    - name: assignments
+      path: deviceManagement/windowsAutopilotDeploymentProfiles/{id}/assignments
+      strip: [id, sourceId, source]
+      restore: { mode: each }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+
+- type: intune.enrollmentConfiguration
+  workload: intune
+  displayName: Enrollment restrictions and ESP
+  version: beta
+  listPath: deviceManagement/deviceEnrollmentConfigurations
+  children:
+    - name: assignments
+      path: deviceManagement/deviceEnrollmentConfigurations/{id}/assignments
+      strip: [id]
+      restore: { mode: assign, bodyProperty: enrollmentConfigurationAssignments }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  matchKeys: [displayName, priority]
+  strip: [deviceEnrollmentConfigurationType]
+  restore:
+    createOnly: [priority]
+    notes: The default (priority 0) configurations are updated in place.
+
+- type: intune.featureUpdateProfile
+  workload: intune
+  displayName: Windows feature updates
+  version: beta
+  listPath: deviceManagement/windowsFeatureUpdateProfiles
+  children:
+    - name: assignments
+      path: deviceManagement/windowsFeatureUpdateProfiles/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [endOfSupportDate, deployableContentDisplayName]
+
+- type: intune.qualityUpdateProfile
+  workload: intune
+  displayName: Windows quality updates (expedite)
+  version: beta
+  listPath: deviceManagement/windowsQualityUpdateProfiles
+  children:
+    - name: assignments
+      path: deviceManagement/windowsQualityUpdateProfiles/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [releaseDateDisplayName, deployableContentDisplayName]
+
+- type: intune.driverUpdateProfile
+  workload: intune
+  displayName: Windows driver updates
+  version: beta
+  listPath: deviceManagement/windowsDriverUpdateProfiles
+  children:
+    - name: assignments
+      path: deviceManagement/windowsDriverUpdateProfiles/{id}/assignments
+      strip: [id]
+      restore: { mode: assign }
+  references: *assignmentRefs
+  dependsOn: *intuneDeps
+  strip: [newUpdates, deviceReporting, inventorySyncStatus]
+
+- type: intune.termsAndConditions
+  workload: intune
+  displayName: Terms and conditions
+  version: beta
+  listPath: deviceManagement/termsAndConditions
+  children:
+    - name: assignments
+      path: deviceManagement/termsAndConditions/{id}/assignments
+      strip: [id]
+      restore: { mode: each }
+  references:
+    - { path: "assignments[*].target.groupId", type: entra.group }
+    - { path: "roleScopeTagIds[*]", type: intune.scopeTag }
+  dependsOn: [entra.group, intune.scopeTag]
+
+- type: intune.roleDefinition
+  workload: intune
+  displayName: Intune roles (custom)
+  version: beta
+  listPath: deviceManagement/roleDefinitions
+  skip: [{ property: isBuiltIn, value: "true" }]
+  restore:
+    readOnly: [isBuiltIn, isBuiltInRoleDefinition]

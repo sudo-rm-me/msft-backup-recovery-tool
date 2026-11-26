@@ -1,0 +1,16 @@
+# Keep Terraform state in Azure Storage (recommended). Copy to backend.tf, create the storage account and container once:
+#   az group create -n rg-mbr-tfstate -l westeurope
+#   az storage account create -n <unique name> -g rg-mbr-tfstate --sku Standard_ZRS --min-tls-version TLS1_2 --allow-blob-public-access false
+#   az storage container create -n tfstate --account-name <unique name> --auth-mode login
+# then run `terraform init -migrate-state`. You need "Storage Blob Data Contributor" on the account.
+# State holds resource IDs and the certificates' public parts, not secrets, but treat it as sensitive.
+
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "rg-mbr-tfstate"
+    storage_account_name = "<unique name>"
+    container_name       = "tfstate"
+    key                  = "mbr.tfstate"
+    use_azuread_auth     = true
+  }
+}

@@ -1,0 +1,21 @@
+# Keep secrets and local state out of the build context (the build stage copies the whole repo).
+.env
+.env.*
+deploy/terraform/
+*.pfx
+*.pem
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Build output and tooling; the image builds these itself.
+**/bin/
+**/obj/
+**/node_modules/
+src/Mbr.Api/wwwroot/
+TestResults/
+.git/
+.vs/
+.vscode/
+.idea/

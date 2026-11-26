@@ -1,0 +1,173 @@
+# Microsoft Defender for Office 365 / Exchange Online Protection, through Exchange Online PowerShell.
+# Policies come before the rules that apply them (rules name their policy).
+
+- type: defender.atpPolicyForO365
+  workload: defender
+  displayName: Safe Attachments for SharePoint, OneDrive and Teams
+  api: exo
+  listPath: AtpPolicyForO365
+  singleton: true
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  strip: [Name, Guid, Identity]
+
+- type: defender.antiPhishPolicy
+  workload: defender
+  displayName: Anti-phishing policies
+  api: exo
+  listPath: AntiPhishPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: defender.antiPhishRule
+  workload: defender
+  displayName: Anti-phishing rules
+  api: exo
+  listPath: AntiPhishRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.antiPhishPolicy]
+
+- type: defender.antiSpamPolicy
+  workload: defender
+  displayName: Anti-spam policies (inbound)
+  api: exo
+  listPath: HostedContentFilterPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: defender.antiSpamRule
+  workload: defender
+  displayName: Anti-spam rules (inbound)
+  api: exo
+  listPath: HostedContentFilterRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.antiSpamPolicy]
+
+- type: defender.outboundSpamPolicy
+  workload: defender
+  displayName: Anti-spam policies (outbound)
+  api: exo
+  listPath: HostedOutboundSpamFilterPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: defender.outboundSpamRule
+  workload: defender
+  displayName: Anti-spam rules (outbound)
+  api: exo
+  listPath: HostedOutboundSpamFilterRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.outboundSpamPolicy]
+
+- type: defender.connectionFilterPolicy
+  workload: defender
+  displayName: Connection filter policy
+  api: exo
+  listPath: HostedConnectionFilterPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  restore: { updateOnly: true }
+
+- type: defender.malwarePolicy
+  workload: defender
+  displayName: Anti-malware policies
+  api: exo
+  listPath: MalwareFilterPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsDefault }
+
+- type: defender.malwareRule
+  workload: defender
+  displayName: Anti-malware rules
+  api: exo
+  listPath: MalwareFilterRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.malwarePolicy]
+
+- type: defender.safeLinksPolicy
+  workload: defender
+  displayName: Safe Links policies
+  api: exo
+  listPath: SafeLinksPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsBuiltInProtection }
+
+- type: defender.safeLinksRule
+  workload: defender
+  displayName: Safe Links rules
+  api: exo
+  listPath: SafeLinksRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.safeLinksPolicy]
+
+- type: defender.safeAttachmentPolicy
+  workload: defender
+  displayName: Safe Attachments policies
+  api: exo
+  listPath: SafeAttachmentPolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  powerShell: { builtInProperty: IsBuiltInProtection }
+
+- type: defender.safeAttachmentRule
+  workload: defender
+  displayName: Safe Attachments rules
+  api: exo
+  listPath: SafeAttachmentRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  dependsOn: [defender.safeAttachmentPolicy]
+
+- type: defender.quarantinePolicy
+  workload: defender
+  displayName: Quarantine policies
+  api: exo
+  listPath: QuarantinePolicy
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  skip: [{ property: QuarantinePolicyType, value: GlobalQuarantinePolicy }]
+
+- type: defender.presetEopRule
+  workload: defender
+  displayName: Preset security policies (EOP)
+  api: exo
+  listPath: EOPProtectionPolicyRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  restore: { updateOnly: true }
+
+- type: defender.presetAtpRule
+  workload: defender
+  displayName: Preset security policies (Defender for Office 365)
+  api: exo
+  listPath: ATPProtectionPolicyRule
+  idProperty: Guid
+  nameProperty: Name
+  matchKeys: [Name]
+  restore: { updateOnly: true }

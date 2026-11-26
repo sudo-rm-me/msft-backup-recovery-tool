@@ -1,0 +1,10 @@
+# SharePoint and OneDrive tenant settings (Graph).
+
+- type: sharepoint.tenantSettings
+  workload: sharepoint
+  displayName: SharePoint tenant settings
+  listPath: admin/sharepoint/settings
+  singleton: true
+  restore:
+    updateOnly: true
+    readOnly: [availableManagedPathsForSiteCreation]

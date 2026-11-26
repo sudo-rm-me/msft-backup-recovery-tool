@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Pass image_tag on the command line:
+#   terraform apply -var image_tag=$(git rev-parse --short HEAD)
+# Or run a prebuilt image instead of building one (docs/setup.md, "Where the image comes from"):
+#   image = "contosoacr.azurecr.io/mbr:1.0.0"
+#   image_registry_id = "/subscriptions/.../providers/Microsoft.ContainerRegistry/registries/contosoacr"
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+location        = "westeurope"
+name            = "mbr"
+# resource_group_name = "rg-platform-backup" # deploy into an existing resource group instead of creating rg-<name>
+
+bootstrap_admins = ["you@contoso.com"]
+
+# Existing S3 bucket. Leave aws_role_arn empty on the first apply; set it once the IAM role exists.
+s3_bucket    = "contoso-mbr-backups"
+s3_region    = "eu-west-1"
+aws_role_arn = ""
+# aws_account_id      = "123456789012" # fills in the trust policy output
+# s3_prefix           = "mbr"
+# s3_object_lock_days = 30             # bucket must have Object Lock enabled
+# s3_object_lock_mode = "COMPLIANCE"
+
+# custom_domain         = "mbr.contoso.com"
+# partner_tenant_id     = "<your tenant ID>"   # import customers from GDAP
+# notification_webhooks = ["https://prod-00.westeurope.logic.azure.com/workflows/..."]
+# max_replicas          = 2
+# Alerts, GDAP and throughput can also be changed in the app: Settings > General.
