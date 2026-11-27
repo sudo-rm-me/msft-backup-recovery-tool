@@ -91,7 +91,7 @@ public sealed class InMemoryPowerShell : IPowerShellRunner
                 }
                 case "update":
                 {
-                    var target = singleton ? list.FirstOrDefault() : Find(api, noun, identity ?? "")
+                    var target = (singleton ? list.FirstOrDefault() : Find(api, noun, identity ?? ""))
                                  ?? throw new InvalidOperationException($"Set-{noun}: '{identity}' wasn't found.");
                     foreach (var (k, v) in props)
                         if (k != "Identity") target[k] = v?.DeepClone();

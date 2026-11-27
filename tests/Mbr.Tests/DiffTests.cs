@@ -78,7 +78,7 @@ public class DiffAndDriftTests
         Assert.Equal("Only in Fabrikam", added!["displayName"]!.GetValue<string>());
 
         var latest = JsonNode.Parse(await client.GetStringAsync($"/api/diff?from=latest&to=latest&tenantId={a.Id}"))!["summary"]!;
-        Assert.Equal(0, latest["entries"]!.AsArray().Count);
+        Assert.Empty(latest["entries"]!.AsArray());
     }
 
     [Fact]

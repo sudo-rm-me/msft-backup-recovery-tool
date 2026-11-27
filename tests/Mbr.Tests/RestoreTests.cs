@@ -215,7 +215,7 @@ public class RestoreTests
 
         var applied = await ApplyAsync(app, client, plan);
         Assert.True(applied["plan"]!["status"]!.GetValue<string>() is "Applied" or "PartiallyApplied", Describe(applied));
-        Assert.Empty(app.Graph.RequestLog.Where(r => !r.StartsWith("GET")));
+        Assert.DoesNotContain(app.Graph.RequestLog, r => !r.StartsWith("GET"));
         var filter = Assert.Single(targetGraph.Collection("deviceManagement/assignmentFilters"));
         var config = Assert.Single(targetGraph.Collection("deviceManagement/deviceConfigurations"));
         var assignment = Assert.Single(targetGraph.Collection($"deviceManagement/deviceConfigurations/{config["id"]}/assignments"));
