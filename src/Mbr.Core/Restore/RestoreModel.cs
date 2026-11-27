@@ -40,6 +40,12 @@ public class RestoreOptions
     public bool StopOnError { get; set; }
     /// <summary>Optional suffix for names of newly created objects (useful when cloning into another tenant for testing).</summary>
     public string? NameSuffix { get; set; }
+    /// <summary>
+    /// Old → new domain names, applied to user names, mail and proxy addresses before matching and writing (e.g. when the old
+    /// tenant's domain isn't available in the new one). Cross-tenant restores also map the source tenant's
+    /// .onmicrosoft.com domain to the target's, unless it's mapped here.
+    /// </summary>
+    public Dictionary<string, string>? DomainMap { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

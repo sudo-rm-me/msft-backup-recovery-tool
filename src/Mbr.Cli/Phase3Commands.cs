@@ -82,6 +82,26 @@ public static partial class FeatureCommands
         if (json) PrintJson(final); else PrintPlan(final, false);
     }
 
+    internal static Option<string[]> MapDomainOption() => new("--map-domain")
+    {
+        Description = "Map an old domain to a new one, e.g. contoso.com=contoso-new.onmicrosoft.com (repeatable). Applied to user names, mail and proxy addresses",
+        AllowMultipleArgumentsPerToken = true,
+    };
+
+    internal static Dictionary<string, string>? ParseDomainMap(string[]? pairs)
+    {
+        if (pairs is not { Length: > 0 }) return null;
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in pairs)
+        {
+            var parts = p.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
+                throw new CliException($"--map-domain takes old=new, e.g. contoso.com=contoso-new.onmicrosoft.com (got '{p}').");
+            map[parts[0]] = parts[1];
+        }
+        return map;
+    }
+
     private static Command Restore()
     {
         var t = TenantOption();
@@ -98,6 +118,7 @@ public static partial class FeatureCommands
         var reportOnly = new Option<bool>("--report-only") { Description = "Restore Conditional Access policies in report-only mode" };
         var mirror = new Option<bool>("--mirror") { Description = "Delete objects of the selected types that aren't in the snapshot (admins)" };
         var suffix = new Option<string?>("--suffix") { Description = "Append to the names of newly created objects" };
+        var mapDomain = MapDomainOption();
         var stopOnError = new Option<bool>("--stop-on-error") { Description = "Stop at the first failed action" };
         var apply = new Option<bool>("--apply") { Description = "Apply right after planning" };
         var yes = new Option<bool>("--yes", "-y") { Description = "Don't ask for confirmation" };
@@ -123,6 +144,7 @@ public static partial class FeatureCommands
                         overwriteChanged = !pr.GetValue(keepChanged), includeDependencies = !pr.GetValue(noDeps), includeAssignments = !pr.GetValue(noAssign),
                         useRecycleBin = !pr.GetValue(noRecycle), relinkReferences = !pr.GetValue(noRelink), conditionalAccessReportOnly = pr.GetValue(reportOnly), deleteExtra = pr.GetValue(mirror),
                         nameSuffix = pr.GetValue(suffix), stopOnError = pr.GetValue(stopOnError),
+                        domainMap = ParseDomainMap(pr.GetValue(mapDomain)),
                     },
                 };
                 var r = (await c.PostAsync("api/restore/plans", body, ct))!;
@@ -131,7 +153,7 @@ public static partial class FeatureCommands
                 if (WantsJson(pr)) PrintJson(detail); else PrintPlan(detail, pr.GetValue(all));
                 if (pr.GetValue(apply)) await ApplyPlanAsync(c, planId, pr.GetValue(yes), WantsJson(pr), ct);
                 else if (!WantsJson(pr)) Console.WriteLine($"\nReview, then run: mbr restore apply {planId}");
-            }, t, snapshot, into, workloads, types, items, keepChanged, noDeps, noAssign, noRecycle, noRelink, reportOnly, mirror, suffix, stopOnError, apply, yes, all),
+            }, t, snapshot, into, workloads, types, items, keepChanged, noDeps, noAssign, noRecycle, noRelink, reportOnly, mirror, suffix, mapDomain, stopOnError, apply, yes, all),
 
             Cmd("list", "List restore plans for a tenant", async (pr, ct) =>
             {

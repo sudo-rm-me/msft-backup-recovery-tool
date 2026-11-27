@@ -9,6 +9,8 @@ import { ArrowUndo24Regular, Checkmark24Regular, Dismiss24Regular, Play24Regular
 import { api, fmtDate, terminal, type Job } from '../api'
 import { ErrorBar, JobProgress, Loading, NeedTenant, PageHeader, Panel, Stat, useHasRole, useMe, useTenant } from '../common'
 import { snapshotLabel, useCatalog, useSnapshots, workloadNames } from './Backups'
+import { DomainMapField } from '../DomainMapField'
+import { parseDomainMap } from '../domainMap'
 
 type PlanStatus = 'Planning' | 'Draft' | 'PendingApproval' | 'Approved' | 'Applying' | 'Applied' | 'PartiallyApplied' | 'Failed' | 'Rejected'
 type ActionKind = 'Create' | 'Update' | 'RecycleBin' | 'Delete' | 'Skip'
@@ -29,6 +31,7 @@ interface PlanDetail { plan: RestorePlan; actions: RestoreAction[]; notes: strin
 interface RestoreOptions {
   overwriteChanged: boolean; includeDependencies: boolean; includeAssignments: boolean; deleteExtra: boolean
   conditionalAccessReportOnly: boolean; useRecycleBin: boolean; relinkReferences: boolean; stopOnError: boolean; nameSuffix?: string
+  domainMap?: Record<string, string>
 }
 
 const defaultOptions: RestoreOptions = {
@@ -66,6 +69,8 @@ export function RestorePage() {
   const [workloads, setWorkloads] = useState<string[]>([])
   const [types, setTypes] = useState<string[]>(params.get('type') ? [params.get('type')!] : [])
   const [options, setOptions] = useState<RestoreOptions>(defaultOptions)
+  const [domains, setDomains] = useState('')
+  const domainMap = parseDomainMap(domains)
   const itemIds = useMemo(() => params.getAll('item').map(Number), [params])
 
   const plans = useQuery({
@@ -83,7 +88,7 @@ export function RestorePage() {
     mutationFn: () => api<{ planId: string; jobId: string }>('/api/restore/plans', {
       method: 'POST',
       body: {
-        snapshotId, targetTenantId: targetId || undefined, options,
+        snapshotId, targetTenantId: targetId || undefined, options: { ...options, domainMap: domainMap.map },
         workloads: scope === 'workloads' ? workloads : undefined, types: scope === 'types' ? types : undefined,
         itemIds: scope === 'items' ? itemIds : undefined,
       },
@@ -158,12 +163,16 @@ export function RestorePage() {
             <Field label="Suffix for newly created names" hint="e.g. ' (restored)'. Leave empty to keep the original names.">
               <Input value={options.nameSuffix ?? ''} onChange={(_, d) => setOptions({ ...options, nameSuffix: d.value })} />
             </Field>
+            {(cross || domains) && (
+              <DomainMapField value={domains} onChange={setDomains}
+                sourceDomain={tenants.find(t => t.id === tenantId)?.defaultDomain} targetDomain={tenants.find(t => t.id === targetId)?.defaultDomain} />
+            )}
           </div>
         </div>
         {options.deleteExtra && <MessageBar intent="warning" style={{ marginTop: 12 }}><MessageBarBody>Mirror mode deletes objects. Review the plan carefully before applying.</MessageBarBody></MessageBar>}
         {create.error && <ErrorBar error={create.error} />}
         <div style={{ marginTop: 16 }}>
-          <Button appearance="primary" icon={<ArrowUndo24Regular />} disabled={!canPlan || create.isPending} onClick={() => create.mutate()}>
+          <Button appearance="primary" icon={<ArrowUndo24Regular />} disabled={!canPlan || create.isPending || !!domainMap.error} onClick={() => create.mutate()}>
             {create.isPending ? 'Starting…' : 'Build plan'}
           </Button>
         </div>

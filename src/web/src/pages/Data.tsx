@@ -11,7 +11,9 @@ import {
   Mail20Regular, Person20Regular, Search20Regular, SearchInfo24Regular,
 } from '@fluentui/react-icons'
 import { api, download, fmtBytes, fmtDate, type Job } from '../api'
-import { ErrorBar, Loading, NeedTenant, PageHeader, Panel, Stat, useHasRole, useTenant } from '../common'
+import { ErrorBar, Loading, NeedTenant, PageHeader, Panel, Stat, useHasRole, useTenant, useTenants } from '../common'
+import { DomainMapField } from '../DomainMapField'
+import { parseDomainMap } from '../domainMap'
 
 export type DataKind = 'OneDrive' | 'SharePointSite' | 'Mailbox'
 export interface DataSource {
@@ -299,22 +301,31 @@ function RestoreDialog({ source, containerId, containerKind, items, at, onClose 
 }) {
   const nav = useNavigate()
   const mailbox = source.kind === 'Mailbox'
+  const tenants = (useTenants().data ?? []).filter(t => t.status === 'Active' || t.id === source.tenantId)
+  const [targetTenant, setTargetTenant] = useState(source.tenantId)
+  const crossTenant = targetTenant !== source.tenantId
   const targets = useQuery({
-    queryKey: ['dataSources', source.tenantId],
-    queryFn: () => api<DataSource[]>(`/api/tenants/${source.tenantId}/data/sources`),
+    queryKey: ['dataSources', targetTenant],
+    queryFn: () => api<DataSource[]>(`/api/tenants/${targetTenant}/data/sources`),
   })
   const compatible = (targets.data ?? []).filter(t => !t.missing && (t.kind === 'Mailbox') === mailbox)
+  // In another tenant, '' means "the same user or site there", matched by the server.
   const [target, setTarget] = useState(source.id)
   const [location, setLocation] = useState<'original' | 'folder'>('original')
   const [folderName, setFolderName] = useState(`Restored ${new Date().toISOString().slice(0, 10)}`)
   const [conflict, setConflict] = useState<'rename' | 'replace' | 'skip'>(containerKind === 'drive' ? 'rename' : 'skip')
-  const other = target !== source.id
+  const [domains, setDomains] = useState('')
+  const domainMap = parseDomainMap(domains)
+  const other = !crossTenant && target !== source.id
+  const pickTenant = (id: string) => { setTargetTenant(id); setTarget(id === source.tenantId ? source.id : '') }
   const restore = useMutation({
     mutationFn: () => api<{ jobId: string }>(`/api/tenants/${source.tenantId}/data/restore`, {
       method: 'POST',
       body: {
         containerId, itemIds: items.map(i => i.itemId), at: at ? new Date(at).toISOString() : undefined,
-        targetSourceId: other ? target : undefined, location: other ? 'folder' : location, folderName, conflict,
+        targetTenantId: crossTenant ? targetTenant : undefined, domainMap: crossTenant ? domainMap.map : undefined,
+        targetSourceId: (crossTenant ? target : other ? target : '') || undefined,
+        location: other ? 'folder' : location, folderName, conflict,
       },
     }),
     onSuccess: r => nav(`/jobs/${r.jobId}`),
@@ -331,11 +342,23 @@ function RestoreDialog({ source, containerId, containerKind, items, at, onClose 
               {items.some(i => i.isFolder) ? ' (folders with everything in them)' : ''},
               {at ? ` as they were at ${fmtDate(new Date(at).toISOString())}` : deleted ? ' as they were just before they were deleted' : ' from the latest backup'}.
             </Text>
+            {tenants.length > 1 && (
+              <Field label="Tenant" hint={crossTenant ? 'Into another tenant, e.g. a replacement for a lost one. Its users and sites must have been discovered there.' : undefined}>
+                <Select value={targetTenant} onChange={(_, d) => pickTenant(d.value)}>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.displayName}{t.id === source.tenantId ? ' (original)' : ''}</option>)}
+                </Select>
+              </Field>
+            )}
             <Field label="Restore to">
               <Select value={target} onChange={(_, d) => setTarget(d.value)}>
+                {crossTenant && <option value="">The same {source.kind === 'SharePointSite' ? 'site (by name)' : 'user (by address)'} in that tenant</option>}
                 {compatible.map(t => <option key={t.id} value={t.id}>{t.displayName}{t.id === source.id ? ' (original)' : ''} · {kindLabels[t.kind]}</option>)}
               </Select>
             </Field>
+            {crossTenant && source.kind !== 'SharePointSite' && (
+              <DomainMapField value={domains} onChange={setDomains}
+                sourceDomain={tenants.find(t => t.id === source.tenantId)?.defaultDomain} targetDomain={tenants.find(t => t.id === targetTenant)?.defaultDomain} />
+            )}
             {!other && (
               <RadioGroup value={location} onChange={(_, d) => setLocation(d.value as 'original' | 'folder')}>
                 <Radio value="original" label="Original location (missing folders are recreated)" />
@@ -364,7 +387,7 @@ function RestoreDialog({ source, containerId, containerKind, items, at, onClose 
           </DialogContent>
           <DialogActions>
             <Button onClick={onClose}>Cancel</Button>
-            <Button appearance="primary" disabled={restore.isPending || ((other || location === 'folder') && !folderName.trim())} onClick={() => restore.mutate()}>
+            <Button appearance="primary" disabled={restore.isPending || !!domainMap.error || ((other || location === 'folder') && !folderName.trim())} onClick={() => restore.mutate()}>
               {restore.isPending ? 'Starting…' : 'Restore'}
             </Button>
           </DialogActions>

@@ -81,7 +81,29 @@ backup):
    MBR has no tool yet to re-import them into a new database, so treat point-in-time restore as essential.
 4. If the Entra app registrations were recreated, customers grant admin consent again (Tenants → consent links).
 
-## 4. Test it
+## 4. Restoring into a new tenant
+
+If a customer's tenant itself is lost (deleted, or taken over and abandoned), MBR can rebuild it in a new tenant from the old
+tenant's backups. The old tenant stays in MBR as the source; nothing is written to it.
+
+1. **Add the new tenant** to MBR and grant consent there (section 7 of [setup.md](setup.md)). Its `.onmicrosoft.com` domain is
+   different from the old one. Verify any custom domains you're moving (e.g. `contoso.com`) in the new tenant first, if you can.
+2. **Configuration:** *Restore* → choose a snapshot of the old tenant → **Into tenant**: the new one. Under **Map domains** list
+   each old domain and its replacement, one per line, e.g. `contoso.com = contoso-new.onmicrosoft.com` (a custom domain you've
+   verified in the new tenant under the same name needs no entry). The old `.onmicrosoft.com` domain is mapped to the new one automatically. The mapping is applied to user names, mail and
+   proxy addresses, so users are matched (or created) under the new domains, and everything that references them (group
+   memberships, Conditional Access, role and Intune assignments) is re-linked to the new IDs. Review the plan, then apply.
+   With the CLI: `mbr restore plan -t old-tenant --into new-tenant --map-domain contoso.com=contoso-new.onmicrosoft.com`.
+   - Recreated users get a random password and must reset it; licences are assigned if the new tenant has the same SKUs.
+   - Restore users and groups first (types `entra.user`, `entra.group`), then everything else, so later plans match them.
+3. **Files and mail:** in the new tenant run a data backup once, so MBR discovers its users and sites. Then, in the old tenant's
+   data browser, select what to restore → **Tenant**: the new one. MBR picks the same user (by address, after the domain map) or
+   site (by name) there, or you choose one; items go back to their original paths. With the CLI:
+   `mbr data restore -t old-tenant adele@contoso.com /Documents --into new-tenant --map-domain contoso.com=contoso-new.onmicrosoft.com`.
+4. **Not covered:** Azure resources (restored only into the subscription they came from), Microsoft 365 Backup restore points
+   (they stay in the tenant that took them), and users synced from on-premises (restore them there).
+
+## 5. Test it
 
 Twice a year, in a separate subscription or resource group:
 1. restore the master key backup into a new vault;

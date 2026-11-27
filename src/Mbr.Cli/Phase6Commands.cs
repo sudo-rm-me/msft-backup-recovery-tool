@@ -23,6 +23,8 @@ public static partial class FeatureCommands
         var library = new Option<string?>("--library", "-l") { Description = "Library / container (e.g. Documents, Mail, Calendar, Contacts)" };
         var at = new Option<string?>("--at") { Description = "Restore as of this time (default: latest; deleted items: just before deletion)" };
         var to = new Option<string?>("--to") { Description = "Restore into another source (another user's OneDrive or mailbox, another site)" };
+        var into = new Option<string?>("--into") { Description = "Restore into another tenant (default target: the same user or site there)" };
+        var mapDomain = MapDomainOption();
         var folder = new Option<string?>("--into-folder") { Description = "Restore into a new folder with this name (keeps the structure)" };
         var conflict = new Option<string>("--conflict") { Description = "rename (keep both), replace or skip", DefaultValueFactory = _ => "rename" };
         conflict.AcceptOnlyFromAmong("rename", "replace", "skip");
@@ -42,18 +44,22 @@ public static partial class FeatureCommands
                 containerId = cid;
                 ids.Add(item["itemId"]!.GetValue<string>());
             }
-            var target = pr.GetValue(to) is { } other ? (await ResolveSourceAsync(c, tid, other, ct))["id"]!.GetValue<string>() : null;
+            var targetTenant = pr.GetValue(into) is { } i ? await c.ResolveTenantAsync(i, ct) : null;
+            var target = pr.GetValue(to) is { } other ? (await ResolveSourceAsync(c, targetTenant ?? tid, other, ct))["id"]!.GetValue<string>() : null;
             var body = new JsonObject
             {
                 ["containerId"] = containerId, ["itemIds"] = ids, ["conflict"] = pr.GetValue(conflict),
-                ["location"] = pr.GetValue(folder) != null || target != null ? "folder" : "original",
+                ["location"] = pr.GetValue(folder) != null || (target != null && targetTenant == null) ? "folder" : "original",
             };
+            if (targetTenant != null) body["targetTenantId"] = targetTenant;
+            if (ParseDomainMap(pr.GetValue(mapDomain)) is { } domains)
+                body["domainMap"] = System.Text.Json.JsonSerializer.SerializeToNode(domains);
             if (pr.GetValue(folder) is { } f) body["folderName"] = f;
             if (target != null) body["targetSourceId"] = target;
             if (pr.GetValue(at) is { } a) body["at"] = DateTimeOffset.Parse(a).ToUniversalTime().ToString("o");
             var r = await c.PostAsync($"api/tenants/{tid}/data/restore", body, ct);
             var done = await WatchJobAsync(c, r!["jobId"]!.GetValue<string>(), ct);
             if (WantsJson(pr)) PrintJson(done["result"]);
-        }, t, sourceArg, paths, library, at, to, folder, conflict);
+        }, t, sourceArg, paths, library, at, to, into, mapDomain, folder, conflict);
     }
 }

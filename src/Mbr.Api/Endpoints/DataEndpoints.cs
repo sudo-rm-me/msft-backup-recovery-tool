@@ -50,19 +50,28 @@ public static partial class ApiRoutes
     private static void MapData(RouteGroupBuilder api)
     {
         api.MapPost("/tenants/{id:guid}/data/restore", async (Guid id, DataRestoreRequest req, MbrDbContext db, OperatorContext ops, JobQueue queue,
-            AuditLog audit, HttpContext ctx, CancellationToken ct) =>
+            DataRestoreService restore, AuditLog audit, HttpContext ctx, CancellationToken ct) =>
         {
-            await LoadTenantAsync(db, ops, id, TenantRole.RestoreOperator, ct);
+            var tenant = await LoadTenantAsync(db, ops, id, TenantRole.RestoreOperator, ct);
             if (req.ItemIds is not { Count: > 0 }) throw new ArgumentException("Select at least one item to restore.");
             var container = await db.DataContainers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == req.ContainerId && c.TenantId == id, ct)
                             ?? throw new KeyNotFoundException("Container not found.");
-            if (req.TargetSourceId is { } t && !await db.DataSources.AnyAsync(s => s.Id == t && s.TenantId == id, ct))
-                throw new ArgumentException("The target must be a source in the same tenant.");
+            _ = new Mbr.Core.Restore.DomainMap(req.DomainMap); // validates the domain names
+            if (req.TargetTenantId is { } other && other != id)
+            {
+                // Writing into another tenant needs the same role there.
+                var targetTenant = await LoadTenantAsync(db, ops, other, TenantRole.RestoreOperator, ct);
+                if (targetTenant.Status != TenantStatus.Active) throw new InvalidOperationException($"Tenant '{targetTenant.DisplayName}' isn't active ({targetTenant.Status}).");
+            }
+            // Resolve now, so a missing or ambiguous target is reported before the job is queued.
+            var source = await db.DataSources.AsNoTracking().FirstAsync(s => s.Id == container.SourceId, ct);
+            var (_, target) = await restore.ResolveTargetAsync(tenant, source, req, ct);
+            req.TargetSourceId = target.Id;
             var parameters = System.Text.Json.JsonSerializer.SerializeToNode(req, DataRestoreJob.Json)!.AsObject();
             var job = await queue.EnqueueAsync("restore.data", id, parameters, ops.Name, maxAttempts: 1, ct: ct);
             await audit.WriteAsync(ops.Name, "data.restoreRequested", id, job.Id.ToString(),
-                new { container = container.Name, items = req.ItemIds.Count, req.At, req.TargetSourceId, req.Location, req.Conflict }, Ip(ctx), ct);
-            return Results.Accepted($"/api/jobs/{job.Id}", new { jobId = job.Id });
+                new { container = container.Name, items = req.ItemIds.Count, req.At, req.TargetTenantId, req.TargetSourceId, req.Location, req.Conflict }, Ip(ctx), ct);
+            return Results.Accepted($"/api/jobs/{job.Id}", new { jobId = job.Id, targetSourceId = target.Id, target = target.DisplayName });
         });
 
         api.MapGet("/tenants/{id:guid}/data/sources", async (Guid id, string? kind, string? search, MbrDbContext db, OperatorContext ops, CancellationToken ct) =>

@@ -17,6 +17,9 @@ public sealed partial class RestoreEngine
         var o = req.Options;
         if (!s.SameTenant)
             doc.Notes.Add($"Cross-tenant restore from {s.SourceTenant.DisplayName} into {s.TargetTenant.DisplayName}: objects are matched by name and references are remapped.");
+        if (!s.Domains.IsEmpty)
+            doc.Notes.Add("Domains mapped: " + string.Join(", ", s.Domains.Entries.Select(e => $"{e.Key} → {e.Value}")) +
+                          ". User names, mail and proxy addresses use the new domains; each must be a verified domain in the target tenant.");
 
         // 1. Selection
         var selected = s.Rows.Values.Where(r =>

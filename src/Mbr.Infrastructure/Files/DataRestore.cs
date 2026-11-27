@@ -20,7 +20,17 @@ public sealed class DataRestoreRequest
     public DateTimeOffset? At { get; set; }
     /// <summary>Restore into another source (another user's OneDrive or mailbox, another site). Default: the original source.</summary>
     public Guid? TargetSourceId { get; set; }
-    /// <summary>"original": back where they were (missing folders are recreated). "folder": into a new folder, keeping the structure.</summary>
+    /// <summary>
+    /// Restore into another tenant (e.g. a replacement for a lost one). Without <see cref="TargetSourceId"/>, the target is the
+    /// source there with the same address (after <see cref="DomainMap"/>) or, for sites, the same name.
+    /// </summary>
+    public Guid? TargetTenantId { get; set; }
+    /// <summary>Old → new domains, used to find the target user in another tenant. See RestoreOptions.DomainMap.</summary>
+    public Dictionary<string, string>? DomainMap { get; set; }
+    /// <summary>
+    /// "original": back where they were (missing folders are recreated); into another tenant, the same paths in the target.
+    /// "folder": into a new folder, keeping the structure. Restores into someone else's data in the same tenant always use a folder.
+    /// </summary>
     public string Location { get; set; } = "original";
     public string? FolderName { get; set; }
     /// <summary>When an item with the same name exists: "rename" (keep both), "replace" or "skip".</summary>
@@ -48,7 +58,10 @@ public interface IDataRestorer
 
 public sealed class DataRestoreContext
 {
+    /// <summary>The tenant the backup belongs to (content is read with its keys).</summary>
     public required Tenant Tenant { get; init; }
+    /// <summary>The tenant written to: <see cref="Tenant"/>, or another one for cross-tenant restores.</summary>
+    public required Tenant TargetTenant { get; init; }
     public required DataSource Source { get; init; }
     public required DataContainer Container { get; init; }
     public required DataSource Target { get; init; }
@@ -59,8 +72,9 @@ public sealed class DataRestoreContext
     public IJobContext? Job { get; init; }
     public DataRestoreResult Result { get; } = new();
     public bool SameSource => Source.Id == Target.Id;
-    /// <summary>Into a separate folder: asked for, or always when restoring into someone else's data.</summary>
-    public bool IntoFolder => Request.Location == "folder" || !SameSource;
+    public bool CrossTenant => Tenant.Id != TargetTenant.Id;
+    /// <summary>Into a separate folder: asked for, or always when restoring into someone else's data in the same tenant.</summary>
+    public bool IntoFolder => Request.Location == "folder" || (!SameSource && !CrossTenant);
     public string FolderName { get; set; } = "";
 
     /// <summary>Destination folder path for an entry ("/Restored 2026-11-26/Reports/Q1").</summary>
@@ -118,26 +132,58 @@ public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backu
         var c = await db.DataContainers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == req.ContainerId && x.TenantId == tenant.Id, ct)
                 ?? throw new KeyNotFoundException("Container not found.");
         var source = await db.DataSources.AsNoTracking().FirstAsync(s => s.Id == c.SourceId, ct);
-        var target = req.TargetSourceId is { } tid && tid != source.Id
-            ? await db.DataSources.AsNoTracking().FirstOrDefaultAsync(s => s.Id == tid && s.TenantId == tenant.Id, ct) ?? throw new KeyNotFoundException("Target not found.")
-            : source;
-        if (target.Kind == DataSourceKind.Mailbox != (source.Kind == DataSourceKind.Mailbox))
-            throw new ArgumentException("Mail, calendar and contacts can only be restored to a mailbox, and files only to OneDrive or SharePoint.");
+        var (targetTenant, target) = await ResolveTargetAsync(tenant, source, req, ct);
         if (req.Conflict is not ("rename" or "replace" or "skip")) throw new ArgumentException("Conflict must be rename, replace or skip.");
         var restorer = restorers.FirstOrDefault(r => r.Handles(c.Kind)) ?? throw new InvalidOperationException($"Restoring {c.Kind} isn't supported.");
 
         var entries = await ExpandAsync(c, req.ItemIds, req.At, ct);
         var ctx = new DataRestoreContext
         {
-            Tenant = tenant, Source = source, Container = c, Target = target, Request = req, Entries = entries,
-            Graph = sessions.Create(tenant, AppRole.Restore).Graph, Reader = reader, Job = job,
+            Tenant = tenant, TargetTenant = targetTenant, Source = source, Container = c, Target = target, Request = req, Entries = entries,
+            Graph = sessions.Create(targetTenant, AppRole.Restore).Graph, Reader = reader, Job = job,
             FolderName = string.IsNullOrWhiteSpace(req.FolderName) ? $"Restored {DateTimeOffset.UtcNow:yyyy-MM-dd HHmm}" : req.FolderName.Trim(),
         };
         if (job != null)
             await job.InfoAsync($"Restoring {entries.Count} item(s) from {source.DisplayName} to {(ctx.SameSource ? "the same place" : target.DisplayName)}" +
+                                (ctx.CrossTenant ? $" in {targetTenant.DisplayName}" : "") +
                                 (ctx.IntoFolder ? $", into folder '{ctx.FolderName}'" : ", to their original location") + $"; on name conflicts: {req.Conflict}");
         await restorer.RestoreAsync(ctx, ct);
         return ctx.Result;
+    }
+
+    /// <summary>
+    /// Where a restore goes: the chosen source, or for another tenant the source there with the same (domain-mapped) address,
+    /// or for sites the same name. Throws when it's ambiguous or missing, so nothing is written to the wrong place.
+    /// </summary>
+    public async Task<(Tenant Tenant, DataSource Source)> ResolveTargetAsync(Tenant tenant, DataSource source, DataRestoreRequest req, CancellationToken ct)
+    {
+        var targetTenant = req.TargetTenantId is { } ttid && ttid != tenant.Id
+            ? await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == ttid, ct) ?? throw new KeyNotFoundException("Target tenant not found.")
+            : tenant;
+        DataSource target;
+        if (req.TargetSourceId is { } tid && tid != source.Id)
+            target = await db.DataSources.AsNoTracking().FirstOrDefaultAsync(s => s.Id == tid && s.TenantId == targetTenant.Id, ct)
+                     ?? throw new KeyNotFoundException(targetTenant.Id == tenant.Id ? "Target not found." : $"Target not found in {targetTenant.DisplayName}.");
+        else if (targetTenant.Id == tenant.Id)
+            target = source;
+        else
+        {
+            var candidates = await db.DataSources.AsNoTracking().Where(s => s.TenantId == targetTenant.Id && s.Kind == source.Kind).ToListAsync(ct);
+            var domains = Restore.RestoreEngine.EffectiveDomainMap(req.DomainMap, tenant, targetTenant);
+            var matches = source.Kind == DataSourceKind.SharePointSite
+                ? candidates.Where(s => string.Equals(s.DisplayName, source.DisplayName, StringComparison.OrdinalIgnoreCase)).ToList()
+                : candidates.Where(s => source.Address is { Length: > 0 } a && string.Equals(s.Address, domains.Apply(a), StringComparison.OrdinalIgnoreCase)).ToList();
+            target = matches.Count switch
+            {
+                1 => matches[0],
+                0 => throw new ArgumentException($"No {source.Kind} matching {source.Address ?? source.DisplayName} in {targetTenant.DisplayName}. " +
+                                                 "Run discovery there, map the domain, or choose the target."),
+                _ => throw new ArgumentException($"Several sources in {targetTenant.DisplayName} match {source.DisplayName}; choose the target."),
+            };
+        }
+        if (target.Kind == DataSourceKind.Mailbox != (source.Kind == DataSourceKind.Mailbox))
+            throw new ArgumentException("Mail, calendar and contacts can only be restored to a mailbox, and files only to OneDrive or SharePoint.");
+        return (targetTenant, target);
     }
 }
 
@@ -155,7 +201,7 @@ public sealed class DataRestoreJob : IJobHandler
         var svc = context.Services.GetRequiredService<DataRestoreService>();
         var r = await svc.RunAsync(tenant, req, context, ct);
         await context.Services.GetRequiredService<AuditLog>().WriteAsync(context.Job.CreatedBy ?? "system", "data.restored", tenant.Id,
-            req.ContainerId.ToString(), new { req.ItemIds, req.At, req.TargetSourceId, req.Location, req.Conflict, r.Restored, r.Skipped, r.Failed }, ct: ct);
+            req.ContainerId.ToString(), new { req.ItemIds, req.At, req.TargetTenantId, req.TargetSourceId, req.Location, req.Conflict, r.Restored, r.Skipped, r.Failed }, ct: ct);
         await context.InfoAsync($"{r.Restored} restored, {r.Skipped} skipped (already there), {r.Failed} failed");
         var result = new JsonObject
         {

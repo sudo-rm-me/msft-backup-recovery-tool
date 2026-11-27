@@ -258,8 +258,10 @@ public class MailAndRestoreTests
         var drive = await SourceAsync(w, "OneDrive");
         var mail = Container(mailSource, "Mail");
         var inbox = Named(await ChildrenAsync(w, mail), "Inbox");
-        var job = await RestoreAsync(w, new { containerId = mail, itemIds = new[] { inbox["itemId"]!.GetValue<string>() }, targetSourceId = drive["source"]!["id"]!.GetValue<string>() });
-        Assert.Equal("Failed", job["status"]!.GetValue<string>());
-        Assert.Contains("only be restored to a mailbox", job["error"]!.GetValue<string>());
+        // Refused before a job is queued.
+        var resp = await w.Client.PostAsJsonAsync($"/api/tenants/{w.Tenant.Id}/data/restore",
+            new { containerId = mail, itemIds = new[] { inbox["itemId"]!.GetValue<string>() }, targetSourceId = drive["source"]!["id"]!.GetValue<string>() });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Contains("only be restored to a mailbox", await resp.Content.ReadAsStringAsync());
     }
 }

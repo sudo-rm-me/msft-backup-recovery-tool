@@ -127,7 +127,7 @@ tenants/{tenantId}/docs/{name}             encrypted named documents (snapshot m
 
 | Workload | Backup method | Restore method |
 |---|---|---|
-| **OneDrive / SharePoint files** | Graph `driveItem` **delta** queries per drive; files stored content-addressed (SHA-256) with chunking for large files; versions kept per retention policy | Upload back to the original or an alternate location; conflict modes are skip, rename or overwrite; permissions re-applied where possible |
+| **OneDrive / SharePoint files** | Graph `driveItem` **delta** queries per drive; files stored content-addressed (SHA-256) with chunking for large files; versions kept per retention policy | Upload back to the original or an alternate location, also in another tenant; conflict modes are skip, rename or overwrite; permissions re-applied where possible |
 | **Exchange mailboxes** | Graph per-folder message delta, exporting full MIME or FTS items (Graph mailbox export/import APIs where available); calendars and contacts through their Graph endpoints | Import into the original or an alternate mailbox or folder, preserving read/sent flags via import APIs or extended properties |
 | **Teams** | Team/channel structure and settings count as config. Channel files live in SharePoint and use the file pipeline. Chat and channel *messages* are **out of scope**: the Graph export APIs are protected and metered (paid per call) | Graph cannot re-post messages as the original author, so messages couldn't be truly restored anyway |
 | **Microsoft 365 Backup** | For tenants that license it: show its policies, protected units and restore points | Native restores through its APIs, alongside this tool's item-level restores |
@@ -137,7 +137,7 @@ Data jobs are **incremental by default**: delta tokens are stored per drive or f
 ### Restore engine
 
 1. **Select**: one object, a set of objects, a workload, or a whole snapshot. The target is the same tenant or a different tenant ("clone or migrate").
-2. **Plan**: compare the snapshot with the live state and resolve every reference through the **ID map**: original ID → current ID, matched by ID, then by stable keys such as UPN or display name plus type. Produce an ordered list of create, update, skip and delete actions using the dependency graph. Show warnings for redacted secrets, missing licenses, and references that can't be resolved.
+2. **Plan**: compare the snapshot with the live state and resolve every reference through the **ID map**: original ID → current ID, matched by ID, then by stable keys such as UPN or display name plus type. For a different tenant, an optional **domain map** (old → new domain, plus the `.onmicrosoft.com` domains automatically) is applied to user names and addresses first. Produce an ordered list of create, update, skip and delete actions using the dependency graph. Show warnings for redacted secrets, missing licenses, and references that can't be resolved.
 3. **Approve**: optional second-operator approval.
 4. **Apply**: run in dependency order with per-item results, then record new IDs back into the ID map.
 5. **Verify**: re-read the restored items and compare them against the snapshot.
