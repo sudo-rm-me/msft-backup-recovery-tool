@@ -1,0 +1,40 @@
+# Live smoke tests against a TEST tenant (never production). Run by hand: Actions → Live smoke tests → Run workflow.
+# Needs the repository secrets listed in docs/testing.md.
+name: Live smoke tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    environment: live-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Write the app certificates
+        env:
+          BACKUP_PFX: ${{ secrets.MBR_LIVE_BACKUP_PFX_BASE64 }}
+          RESTORE_PFX: ${{ secrets.MBR_LIVE_RESTORE_PFX_BASE64 }}
+        run: |
+          umask 077
+          echo "$BACKUP_PFX" | base64 -d > "$RUNNER_TEMP/backup.pfx"
+          echo "$RESTORE_PFX" | base64 -d > "$RUNNER_TEMP/restore.pfx"
+      - name: Run the live tests
+        env:
+          MBR_LIVE_TENANT: ${{ secrets.MBR_LIVE_TENANT }}
+          Mbr__Apps__Backup__ClientId: ${{ secrets.MBR_LIVE_BACKUP_CLIENT_ID }}
+          Mbr__Apps__Backup__CertificatePath: ${{ runner.temp }}/backup.pfx
+          Mbr__Apps__Backup__CertificatePassword: ${{ secrets.MBR_LIVE_PFX_PASSWORD }}
+          Mbr__Apps__Restore__ClientId: ${{ secrets.MBR_LIVE_RESTORE_CLIENT_ID }}
+          Mbr__Apps__Restore__CertificatePath: ${{ runner.temp }}/restore.pfx
+          Mbr__Apps__Restore__CertificatePassword: ${{ secrets.MBR_LIVE_PFX_PASSWORD }}
+        run: dotnet test tests/Mbr.LiveTests --logger "console;verbosity=normal"
+      - name: Remove the certificates
+        if: always()
+        run: rm -f "$RUNNER_TEMP/backup.pfx" "$RUNNER_TEMP/restore.pfx"
