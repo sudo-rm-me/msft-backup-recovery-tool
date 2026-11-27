@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   Badge, Button, Checkbox, Dialog, Textarea, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Select,
-  Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, MessageBar, MessageBarBody, Subtitle2,
+  Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, MessageBar, MessageBarBody, Subtitle2, Tooltip,
 } from '@fluentui/react-components'
 import { Add24Regular } from '@fluentui/react-icons'
 import { api, fmtDate, type Operator, type StorageKind, type StorageTarget, type TenantRole } from '../api'
@@ -104,6 +105,15 @@ function StorageTab({ admin }: { admin: boolean }) {
     mutationFn: async (id: string) => ({ id, r: await api<{ ok: boolean; steps: { name: string; ok: boolean; error?: string }[] }>(`/api/storage-targets/${id}/test`, { method: 'POST' }) }),
     onSuccess: ({ id, r }) => setResults((x) => ({ ...x, [id]: r })),
   })
+  const nav = useNavigate()
+  const reimport = useMutation({
+    mutationFn: (id: string) => api<{ jobId: string }>(`/api/storage-targets/${id}/import`, { method: 'POST' }),
+    onSuccess: (r) => nav(`/jobs/${r.jobId}`),
+  })
+  const confirmImport = (t: StorageTarget) => {
+    if (window.confirm(`Rebuild tenants, snapshots and file and mail versions from "${t.name}"? Use this after losing the database; ` +
+      "it only adds what MBR doesn't already know, and needs the master key the backups were written with.")) reimport.mutate(t.id)
+  }
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
@@ -111,7 +121,7 @@ function StorageTab({ admin }: { admin: boolean }) {
           The <b>S3 (deployment)</b> target follows the Terraform variables until you edit it here; after that your edits are kept.</Text>
         {admin && <Button appearance="primary" icon={<Add24Regular />} onClick={() => setDialog({ open: true })}>Add storage</Button>}
       </div>
-      <ErrorBar error={q.error ?? test.error} />
+      <ErrorBar error={q.error ?? test.error ?? reimport.error} />
       {q.isLoading ? <Loading /> : (
         <Table size="small">
           <TableHeader><TableRow>
@@ -132,7 +142,10 @@ function StorageTab({ admin }: { admin: boolean }) {
                 </TableCell>
                 <TableCell>
                   <Button size="small" onClick={() => test.mutate(t.id)} disabled={test.isPending}>Test</Button>{' '}
-                  {admin && <Button size="small" onClick={() => setDialog({ open: true, existing: t })}>Edit</Button>}
+                  {admin && <Button size="small" onClick={() => setDialog({ open: true, existing: t })}>Edit</Button>}{' '}
+                  {admin && <Tooltip relationship="description" content="Rebuild MBR's index from this storage after losing the database">
+                    <Button size="small" onClick={() => confirmImport(t)} disabled={reimport.isPending}>Re-import</Button>
+                  </Tooltip>}
                 </TableCell>
               </TableRow>
             ))}

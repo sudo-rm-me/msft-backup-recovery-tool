@@ -16,6 +16,7 @@ Each test builds its own app with a temporary SQLite database and local storage.
 | `AppSettingsTests` | Settings changed in the app: overrides, reset, encrypted secrets, validation, the deployment storage target |
 | `ConfigBackupTests`, `DiffTests` | Config snapshots, schedules, retention, diff and drift alerts |
 | `RestoreTests`, `EntraRestoreTests` | Restore planning, ordering, ID mapping, approval, verification, recycle bin and recreation |
+| `StorageImportTests` | Losing the database: rebuilding tenants, snapshots and file versions from storage with the master key |
 | `CrossTenantTests` | Restoring into another tenant: domain mapping, users, and mail into the same user there |
 | `FileBackupTests`, `MailAndRestoreTests` | OneDrive/SharePoint and mailbox backup, versions, resume and item restore |
 | `AzureTests`, `WorkloadTests` | Azure (ARM templates, RBAC, Policy) and the PowerShell/Graph workloads |

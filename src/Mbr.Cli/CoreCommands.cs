@@ -101,6 +101,13 @@ public static class CoreCommands
                 if (WantsJson(pr)) { PrintJson(r); return; }
                 foreach (var s in r!["steps"]!.AsArray()) Console.WriteLine($"{s!["name"],-8} {(s["ok"]!.GetValue<bool>() ? "ok" : "FAILED " + s["error"])}");
                 Console.WriteLine(r["ok"]!.GetValue<bool>() ? "Storage target is usable." : "Storage target is NOT usable.");
+            }, id),
+            Cmd("import", "Rebuild tenants, snapshots and file and mail versions from what's in the target (after losing the database)", async (pr, ct) =>
+            {
+                var c = Client();
+                var r = await c.PostAsync($"api/storage-targets/{pr.GetValue(id)}/import", null, ct);
+                var done = await WatchJobAsync(c, r!["jobId"]!.GetValue<string>(), ct);
+                if (WantsJson(pr)) PrintJson(done["result"]);
             }, id));
     }
 
