@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: nuget
-    directory: /
+    directories: [/, /tests/Mbr.LiveTests]
     schedule: { interval: weekly }
     groups:
       nuget: { patterns: ["*"], update-types: [minor, patch] }
@@ -19,7 +19,17 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # .NET major upgrades change the SDK, runtime and TargetFramework together; done deliberately.
+      - dependency-name: dotnet/sdk
+        update-types: [version-update:semver-major]
+      - dependency-name: dotnet/aspnet
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: terraform
     directories: [/deploy/terraform, /deploy/terraform/modules/mbr]
     schedule: { interval: weekly }
+    ignore:
+      # Provider major versions have breaking changes; upgraded deliberately.
+      - dependency-name: hashicorp/*
+        update-types: [version-update:semver-major]
