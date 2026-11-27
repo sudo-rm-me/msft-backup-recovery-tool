@@ -1,7 +1,7 @@
 # The MBR image for Azure Container Apps: API, web console and job worker in one process.
 # Built in Azure Container Registry by the Terraform deployment (deploy/terraform, `az acr build`).
 
-FROM node:24-alpine AS web
+FROM node:26-alpine AS web
 WORKDIR /src/src/web
 COPY src/web/package*.json ./
 RUN npm ci
