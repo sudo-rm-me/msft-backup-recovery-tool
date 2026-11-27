@@ -965,6 +965,23 @@ namespace Mbr.Infrastructure.Data.Migrations.Sqlite
                     b.ToTable("WorkerInstances");
                 });
 
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
+                });
+
             modelBuilder.Entity("Mbr.Core.Model.OperatorTenantRole", b =>
                 {
                     b.HasOne("Mbr.Core.Model.Operator", null)

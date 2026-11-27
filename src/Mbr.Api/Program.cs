@@ -4,6 +4,7 @@ using Mbr.Api.Endpoints;
 using Mbr.Infrastructure;
 using Mbr.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Identity.Web;
 
@@ -40,7 +41,12 @@ else
 builder.Services.AddAuthorization();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<OperatorContext>();
-builder.Services.AddDataProtection();
+// Keys for signed links (consent state) live in the database so every replica and revision can read them; in Azure they're
+// wrapped with the Key Vault master key.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("mbr").PersistKeysToDbContext<MbrDbContext>();
+var encryption = builder.Configuration.GetSection("Mbr:Encryption");
+if (string.Equals(encryption["KeyWrapper"], "KeyVault", StringComparison.OrdinalIgnoreCase) && encryption["KeyVaultKeyId"] is { Length: > 0 } keyId)
+    dataProtection.ProtectKeysWithAzureKeyVault(new Uri(keyId), new Azure.Identity.DefaultAzureCredential());
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());

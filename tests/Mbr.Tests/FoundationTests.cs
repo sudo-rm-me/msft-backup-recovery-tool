@@ -119,6 +119,13 @@ public class CryptoAndStorageTests
 
         var file = Directory.EnumerateFiles(Path.Combine(app.DataDir, "storage"), h1, SearchOption.AllDirectories).Single();
         Assert.DoesNotContain("secret", System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(file)));
+
+        // The wrapped data key is kept next to the backups, and unwraps (with the master key) to the key that encrypted them.
+        var escrow = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(app.DataDir, "storage", TenantContentStore.KeyEscrowKey(tenant.Id))))!;
+        Assert.Equal(tenant.DirectoryId, escrow["directoryId"]!.GetValue<string>());
+        var wrapper = app.Services.GetRequiredService<IKeyWrapper>();
+        var key = await wrapper.UnwrapAsync(Convert.FromBase64String(escrow["wrappedDataKey"]!.GetValue<string>()));
+        Assert.Equal(content, Aead.Decrypt(key, await File.ReadAllBytesAsync(file)));
     }
 }
 
@@ -218,6 +225,8 @@ public class OnboardingTests
         var tenant = await app.AddTenantAsync();
         var urls = JsonNode.Parse(await client.GetStringAsync($"/api/tenants/{tenant.Id}/consent-urls"))!;
         Assert.Contains($"/{tenant.DirectoryId}/adminconsent", urls["backup"]!.GetValue<string>());
+        // The signing keys live in the database, so a callback can land on any replica or a later revision.
+        Assert.NotEmpty(app.Db(db => db.DataProtectionKeys.ToList()));
 
         var bad = await client.GetAsync("/api/onboarding/consent-callback?admin_consent=True&state=forged");
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);

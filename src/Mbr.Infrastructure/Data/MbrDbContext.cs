@@ -8,8 +8,13 @@ namespace Mbr.Infrastructure.Data;
 /// The metadata database. Use <see cref="SqliteMbrDbContext"/> or <see cref="PostgresMbrDbContext"/>; each has its
 /// own migrations (Data/Migrations/Sqlite, Data/Migrations/Postgres). See docs/development.md for adding migrations.
 /// </summary>
-public abstract class MbrDbContext(DbContextOptions options) : DbContext(options)
+public abstract class MbrDbContext(DbContextOptions options) : DbContext(options),
+    Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.IDataProtectionKeyContext
 {
+    /// <summary>ASP.NET Core data-protection keys (e.g. for signed consent links), shared by every replica.</summary>
+    public DbSet<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey> DataProtectionKeys =>
+        Set<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey>();
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<StorageTarget> StorageTargets => Set<StorageTarget>();
     public DbSet<Job> Jobs => Set<Job>();

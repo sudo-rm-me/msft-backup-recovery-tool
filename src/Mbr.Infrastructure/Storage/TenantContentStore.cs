@@ -46,11 +46,40 @@ public sealed class StorageTargetResolver(IBlobStoreFactory factory, IServiceSco
 /// Layout inside a storage target:
 ///   tenants/{tenantId}/objects/{hh}/{sha256}   encrypted content-addressed objects
 ///   tenants/{tenantId}/docs/{name}             encrypted named documents (manifests, indexes)
+///   tenants/{tenantId}/key.json                the tenant's data key, wrapped by the master key (see KeyEscrowKey)
 /// </summary>
 public sealed class TenantContentStore(StorageTargetResolver resolver, TenantKeyService keys, IServiceScopeFactory scopes) : ITenantContentStore
 {
     private static string ObjectKey(Tenant t, string hash) => $"tenants/{t.Id}/objects/{hash[..2]}/{hash}";
     private static string DocKey(Tenant t, string name) => $"tenants/{t.Id}/docs/{name.TrimStart('/')}";
+
+    /// <summary>
+    /// A copy of the tenant's wrapped data key next to its backups, so they stay decryptable with the master key even if the
+    /// metadata database is lost. Useless without the master key (it's wrapped by it), so it's stored as plain JSON.
+    /// </summary>
+    public static string KeyEscrowKey(Guid tenantId) => $"tenants/{tenantId}/key.json";
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Guid Tenant, Guid Target), bool> Escrowed = new();
+
+    private async Task<byte[]> KeyForWriteAsync(Tenant tenant, Guid storageTargetId, IBlobStore store, CancellationToken ct)
+    {
+        var key = await keys.GetKeyAsync(tenant, ct);
+        if (Escrowed.ContainsKey((tenant.Id, storageTargetId))) return key;
+        var path = KeyEscrowKey(tenant.Id);
+        if (!await store.ExistsAsync(path, ct))
+        {
+            using var scope = scopes.CreateScope();
+            var row = await scope.ServiceProvider.GetRequiredService<MbrDbContext>().Tenants.AsNoTracking().FirstAsync(t => t.Id == tenant.Id, ct);
+            var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                tenantId = row.Id, directoryId = row.DirectoryId, displayName = row.DisplayName,
+                wrappedDataKey = row.WrappedDataKey, wrapperId = row.DataKeyWrapperId, writtenAt = DateTimeOffset.UtcNow,
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await store.PutAsync(path, new MemoryStream(json), ct);
+        }
+        Escrowed[(tenant.Id, storageTargetId)] = true;
+        return key;
+    }
 
     public async Task<string> PutObjectAsync(Tenant tenant, Guid storageTargetId, ReadOnlyMemory<byte> content, CancellationToken ct = default)
     {
@@ -61,7 +90,7 @@ public sealed class TenantContentStore(StorageTargetResolver resolver, TenantKey
             return hash;
 
         var (_, store) = await resolver.ResolveAsync(storageTargetId, ct);
-        var encrypted = Aead.Encrypt(await keys.GetKeyAsync(tenant, ct), content.Span);
+        var encrypted = Aead.Encrypt(await KeyForWriteAsync(tenant, storageTargetId, store, ct), content.Span);
         await store.PutAsync(ObjectKey(tenant, hash), new MemoryStream(encrypted), ct);
 
         db.StoredObjects.Add(new StoredObject
@@ -88,7 +117,7 @@ public sealed class TenantContentStore(StorageTargetResolver resolver, TenantKey
     public async Task PutDocumentAsync(Tenant tenant, Guid storageTargetId, string name, ReadOnlyMemory<byte> content, CancellationToken ct = default)
     {
         var (_, store) = await resolver.ResolveAsync(storageTargetId, ct);
-        var encrypted = Aead.Encrypt(await keys.GetKeyAsync(tenant, ct), content.Span);
+        var encrypted = Aead.Encrypt(await KeyForWriteAsync(tenant, storageTargetId, store, ct), content.Span);
         await store.PutAsync(DocKey(tenant, name), new MemoryStream(encrypted), ct);
     }
 
