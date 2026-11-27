@@ -24,4 +24,6 @@ aws_role_arn = ""
 # partner_tenant_id     = "<your tenant ID>"   # import customers from GDAP
 # notification_webhooks = ["https://prod-00.westeurope.logic.azure.com/workflows/..."]
 # max_replicas          = 2
+# allowed_ip_ranges     = ["203.0.113.0/24"]    # only these reach the console (docs/setup.md, section 12)
+# private_networking    = true                  # first apply only; also set management_ip_ranges
 # Alerts, GDAP and throughput can also be changed in the app: Settings > General.

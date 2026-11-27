@@ -38,6 +38,7 @@ resource "time_sleep" "app_rbac" {
     azurerm_role_assignment.kv_certificates,
     azurerm_postgresql_flexible_server_active_directory_administrator.app,
     azuread_app_role_assignment.aws,
+    azurerm_private_endpoint.key_vault,
   ]
   create_duration = "90s"
 }
@@ -128,6 +129,16 @@ resource "azurerm_container_app" "main" {
     traffic_weight {
       latest_revision = true
       percentage      = 100
+    }
+
+    # Empty: open to the internet (sign-in still required). Otherwise only these ranges reach the console and API.
+    dynamic "ip_security_restriction" {
+      for_each = var.allowed_ip_ranges
+      content {
+        name             = "allow-${ip_security_restriction.key}"
+        action           = "Allow"
+        ip_address_range = ip_security_restriction.value
+      }
     }
   }
 

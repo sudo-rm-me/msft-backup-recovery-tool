@@ -22,6 +22,10 @@ module "mbr" {
   s3_object_lock_days            = var.s3_object_lock_days
   s3_object_lock_mode            = var.s3_object_lock_mode
   s3_storage_class               = var.s3_storage_class
+  allowed_ip_ranges              = var.allowed_ip_ranges
+  private_networking             = var.private_networking
+  vnet_address_space             = var.vnet_address_space
+  management_ip_ranges           = var.management_ip_ranges
   cpu                            = var.cpu
   memory                         = var.memory
   min_replicas                   = var.min_replicas

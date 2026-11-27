@@ -85,6 +85,13 @@ resource "azurerm_key_vault" "main" {
   soft_delete_retention_days = 90
   tags                       = local.tags
 
+  # With private networking the app uses the private endpoint, and the public endpoint only admits management_ip_ranges.
+  network_acls {
+    default_action = local.private ? "Deny" : "Allow"
+    bypass         = "AzureServices"
+    ip_rules       = local.private ? var.management_ip_ranges : []
+  }
+
   lifecycle {
     prevent_destroy = true
   }
@@ -182,7 +189,9 @@ resource "azurerm_postgresql_flexible_server" "main" {
   sku_name                      = var.postgres_sku
   storage_mb                    = var.postgres_storage_mb
   backup_retention_days         = var.postgres_backup_retention_days
-  public_network_access_enabled = true
+  public_network_access_enabled = !local.private
+  delegated_subnet_id           = local.private ? azurerm_subnet.postgres[0].id : null
+  private_dns_zone_id           = local.private ? azurerm_private_dns_zone.postgres[0].id : null
   tags                          = local.tags
 
   # No passwords: only Microsoft Entra identities can sign in.
@@ -196,6 +205,8 @@ resource "azurerm_postgresql_flexible_server" "main" {
     prevent_destroy = true
     ignore_changes  = [zone]
   }
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres]
 }
 
 resource "azurerm_postgresql_flexible_server_database" "mbr" {
@@ -215,8 +226,10 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ap
   principal_type      = "ServicePrincipal"
 }
 
-# Container Apps (Consumption) has no fixed outbound IPs, so allow Azure services; sign-in still requires Entra.
+# Without private networking: Container Apps (Consumption) has no fixed outbound IPs, so allow Azure services; sign-in
+# still requires Entra.
 resource "azurerm_postgresql_flexible_server_firewall_rule" "azure" {
+  count            = local.private ? 0 : 1
   name             = "AllowAzureServices"
   server_id        = azurerm_postgresql_flexible_server.main.id
   start_ip_address = "0.0.0.0"
@@ -230,5 +243,11 @@ resource "azurerm_container_app_environment" "main" {
   resource_group_name        = local.resource_group_name
   location                   = local.location
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  infrastructure_subnet_id   = local.private ? azurerm_subnet.apps[0].id : null
   tags                       = local.tags
+}
+
+moved {
+  from = azurerm_postgresql_flexible_server_firewall_rule.azure
+  to   = azurerm_postgresql_flexible_server_firewall_rule.azure[0]
 }
