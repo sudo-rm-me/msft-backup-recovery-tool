@@ -63,15 +63,18 @@ public static partial class ApiRoutes
                 var targetTenant = await LoadTenantAsync(db, ops, other, TenantRole.RestoreOperator, ct);
                 if (targetTenant.Status != TenantStatus.Active) throw new InvalidOperationException($"Tenant '{targetTenant.DisplayName}' isn't active ({targetTenant.Status}).");
             }
-            // Resolve now, so a missing or ambiguous target is reported before the job is queued.
+            // Resolve now, so a wrong or ambiguous target is reported before the job is queued. In another tenant, a source MBR
+            // doesn't know yet is looked for again by the job, after discovering that tenant's users and sites.
             var source = await db.DataSources.AsNoTracking().FirstAsync(s => s.Id == container.SourceId, ct);
-            var (_, target) = await restore.ResolveTargetAsync(tenant, source, req, ct);
-            req.TargetSourceId = target.Id;
+            DataSource? target = null;
+            try { (_, target) = await restore.ResolveTargetAsync(tenant, source, req, ct); }
+            catch (RestoreTargetNotFoundException) when (req.TargetTenantId is { } tt && tt != id && req.TargetSourceId is null) { }
+            req.TargetSourceId = target?.Id;
             var parameters = System.Text.Json.JsonSerializer.SerializeToNode(req, DataRestoreJob.Json)!.AsObject();
             var job = await queue.EnqueueAsync("restore.data", id, parameters, ops.Name, maxAttempts: 1, ct: ct);
             await audit.WriteAsync(ops.Name, "data.restoreRequested", id, job.Id.ToString(),
                 new { container = container.Name, items = req.ItemIds.Count, req.At, req.TargetTenantId, req.TargetSourceId, req.Location, req.Conflict }, Ip(ctx), ct);
-            return Results.Accepted($"/api/jobs/{job.Id}", new { jobId = job.Id, targetSourceId = target.Id, target = target.DisplayName });
+            return Results.Accepted($"/api/jobs/{job.Id}", new { jobId = job.Id, targetSourceId = target?.Id, target = target?.DisplayName });
         });
 
         api.MapGet("/tenants/{id:guid}/data/sources", async (Guid id, string? kind, string? search, MbrDbContext db, OperatorContext ops, CancellationToken ct) =>
