@@ -37,6 +37,8 @@ public sealed partial class RestoreEngine(
         public required TenantSession Session { get; init; }
         public required RestoreOptions Options { get; init; }
         public bool SameTenant => SourceTenant.Id == TargetTenant.Id;
+        /// <summary>Applied to snapshot content as it's read, so matching, plans and writes all see the new domains.</summary>
+        public DomainMap Domains { get; init; } = DomainMap.Empty;
         public Dictionary<(string Type, string Id), SnapshotItem> Rows { get; } = new();
         public Dictionary<long, JsonObject> Contents { get; } = new();
         public Dictionary<string, List<CapturedItem>?> Live { get; } = new();
@@ -59,6 +61,7 @@ public sealed partial class RestoreEngine(
         {
             Snapshot = snapshot, SourceTenant = source, TargetTenant = target, Options = options,
             Session = sessions.Create(target, AppRole.Restore),
+            Domains = EffectiveDomainMap(options.DomainMap, source, target),
         };
         foreach (var row in await db.SnapshotItems.AsNoTracking().Where(i => i.SnapshotId == snapshotId).ToListAsync(ct))
             state.Rows[(row.ResourceType, row.ObjectId)] = row;
@@ -67,10 +70,24 @@ public sealed partial class RestoreEngine(
         return state;
     }
 
+    /// <summary>The requested map, plus source → target .onmicrosoft.com domain for cross-tenant restores.</summary>
+    public static DomainMap EffectiveDomainMap(IEnumerable<KeyValuePair<string, string>>? requested, Tenant source, Tenant target)
+    {
+        var map = new DomainMap(requested);
+        static bool Initial(string d) => d.EndsWith(".onmicrosoft.com", StringComparison.OrdinalIgnoreCase);
+        return source.Id != target.Id && Initial(source.DefaultDomain) && Initial(target.DefaultDomain)
+            ? map.With(source.DefaultDomain, target.DefaultDomain)
+            : map;
+    }
+
     private async Task<JsonObject> ContentAsync(RunState s, SnapshotItem row, CancellationToken ct)
     {
         if (!s.Contents.TryGetValue(row.Id, out var c))
-            s.Contents[row.Id] = c = await reader.GetContentAsync(s.SourceTenant, s.Snapshot, row, ct);
+        {
+            c = await reader.GetContentAsync(s.SourceTenant, s.Snapshot, row, ct);
+            if (!s.Domains.IsEmpty) c = (JsonObject)s.Domains.Apply(c)!;
+            s.Contents[row.Id] = c;
+        }
         return c;
     }
 

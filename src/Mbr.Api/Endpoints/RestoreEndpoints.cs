@@ -60,6 +60,7 @@ public static partial class ApiRoutes
             if (target.Status != TenantStatus.Active) throw new InvalidOperationException($"Tenant '{target.DisplayName}' isn't active ({target.Status}).");
             var options = req.Options ?? new RestoreOptions();
             if (options.DeleteExtra) await ops.EnsureTenantRoleAsync(targetId, TenantRole.Admin, ct);
+            _ = new DomainMap(options.DomainMap); // validates the domain names
             var request = new RestoreRequest
             {
                 SnapshotId = snapshot.Id, TargetTenantId = targetId, Workloads = req.Workloads ?? [], Types = req.Types ?? [],
