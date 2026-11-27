@@ -107,7 +107,10 @@ tenant's backups. The old tenant stays in MBR as the source; nothing is written 
    - Restore users and groups first (types `entra.user`, `entra.group`), then everything else, so later plans match them.
 3. **Files and mail:** in the new tenant run a data backup once, so MBR discovers its users and sites. Then, in the old tenant's
    data browser, select what to restore → **Tenant**: the new one. MBR picks the same user (by address, after the domain map) or
-   site (by name) there, or you choose one; items go back to their original paths. With the CLI:
+   site (the same path on the new tenant's SharePoint host, else the same name) there, or you choose one; items go back to their
+   original paths. A user or site MBR hasn't seen there yet is found by discovering the new tenant during the restore. Users
+   who don't exist there at all must be restored first (config restore of `entra.user`) and licensed, so their OneDrive and
+   mailbox get provisioned. With the CLI:
    `mbr data restore -t old-tenant adele@contoso.com /Documents --into new-tenant --map-domain contoso.com=contoso-new.onmicrosoft.com`.
 4. **Not covered:** Azure resources (restored only into the subscription they came from), Microsoft 365 Backup restore points
    (they stay in the tenant that took them), and users synced from on-premises (restore them there).
