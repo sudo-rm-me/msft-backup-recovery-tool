@@ -14,7 +14,7 @@ COPY . .
 COPY --from=web /src/src/Mbr.Api/wwwroot ./src/Mbr.Api/wwwroot
 RUN dotnet publish src/Mbr.Api -c Release -o /app
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:11.0
 # PowerShell 7 + modules for Exchange Online, Teams and Security & Compliance configuration backups.
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates \
  && wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
