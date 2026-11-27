@@ -3,15 +3,18 @@ import { Route } from 'react-router-dom'
 import { CloudArrowUp20Regular, ArrowSync20Regular, ArrowUndo20Regular, Cloud20Regular, DataBarVertical20Regular, Delete20Regular, DocumentFolder20Regular, ShieldCheckmark20Regular } from '@fluentui/react-icons'
 import type { NavItem } from './App'
 import { BackupsPage, LastBackupWidget } from './pages/Backups'
-import { SnapshotExplorerPage } from './pages/SnapshotExplorer'
-import { DiffPage } from './pages/Diff'
-import { RestorePage, RestorePlanPage } from './pages/Restore'
-import { RecycleBinPage } from './pages/RecycleBin'
-import { AzurePage } from './pages/Azure'
-import { ReportsPage } from './pages/Reports'
-import { M365BackupPage } from './pages/M365Backup'
 import { DataBrowserPage, DataProtectionWidget, DataSourcesPage } from './pages/Data'
 import { jobParameterTemplates } from './pages/Schedules'
+import { lazyPage } from './lazyPage'
+
+const SnapshotExplorerPage = lazyPage(() => import('./pages/SnapshotExplorer'), 'SnapshotExplorerPage')
+const DiffPage = lazyPage(() => import('./pages/Diff'), 'DiffPage')
+const RestorePage = lazyPage(() => import('./pages/Restore'), 'RestorePage')
+const RestorePlanPage = lazyPage(() => import('./pages/Restore'), 'RestorePlanPage')
+const RecycleBinPage = lazyPage(() => import('./pages/RecycleBin'), 'RecycleBinPage')
+const AzurePage = lazyPage(() => import('./pages/Azure'), 'AzurePage')
+const ReportsPage = lazyPage(() => import('./pages/Reports'), 'ReportsPage')
+const M365BackupPage = lazyPage(() => import('./pages/M365Backup'), 'M365BackupPage')
 
 jobParameterTemplates['backup.config'] = { workloads: ['entra', 'intune', 'azure', 'exchange', 'defender', 'purview', 'teams', 'sharepoint'] }
 jobParameterTemplates['config.drift'] = {}

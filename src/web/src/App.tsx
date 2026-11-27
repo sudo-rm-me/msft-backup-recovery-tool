@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { Suspense, useEffect, useMemo, useState, type ReactElement } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
-import { Dropdown, Option, Text } from '@fluentui/react-components'
+import { Dropdown, Option, Spinner, Text } from '@fluentui/react-components'
 import {
   Board20Regular, Building20Regular, Settings20Regular, History20Regular, CalendarClock20Regular, ShieldTask20Regular,
   Navigation20Regular, Dismiss20Regular,
@@ -8,12 +8,16 @@ import {
 import { signOut } from './api'
 import { TenantContext, useMe, useTenants } from './common'
 import { Dashboard } from './pages/Dashboard'
-import { TenantsPage, TenantDetailPage } from './pages/Tenants'
-import { JobsPage, JobDetailPage } from './pages/Jobs'
 import { SchedulesPage } from './pages/Schedules'
-import { SettingsPage } from './pages/Settings'
-import { AuditPage } from './pages/Audit'
 import { featureNav, featureRoutes } from './features'
+import { lazyPage } from './lazyPage'
+
+const TenantsPage = lazyPage(() => import('./pages/Tenants'), 'TenantsPage')
+const TenantDetailPage = lazyPage(() => import('./pages/Tenants'), 'TenantDetailPage')
+const JobsPage = lazyPage(() => import('./pages/Jobs'), 'JobsPage')
+const JobDetailPage = lazyPage(() => import('./pages/Jobs'), 'JobDetailPage')
+const SettingsPage = lazyPage(() => import('./pages/Settings'), 'SettingsPage')
+const AuditPage = lazyPage(() => import('./pages/Audit'), 'AuditPage')
 
 export interface NavItem { to: string; label: string; icon: ReactElement; section: 'tenant' | 'global' }
 
@@ -115,6 +119,7 @@ export default function App() {
           </div>
         </aside>
         <main className="suite-main" key={location.pathname.split('/')[1]}>
+          <Suspense fallback={<Spinner label="Loading…" />}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tenants" element={<TenantsPage />} />
@@ -127,6 +132,7 @@ export default function App() {
             {featureRoutes}
             <Route path="*" element={<Text>Page not found.</Text>} />
           </Routes>
+          </Suspense>
         </main>
       </div>
     </TenantContext.Provider>

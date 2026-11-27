@@ -13,7 +13,8 @@ admins who manage **many tenants** from one deployment, with a web console and a
 - **Scheduling**: cron schedules (with presets) per tenant, with time zones and overlap protection.
 - **Safe restores**: plan → (optional approval) → apply → verify, with ID remapping and dependency ordering.
 
-See [PLAN.md](PLAN.md) for the roadmap and design, and [docs/setup.md](docs/setup.md) to deploy it.
+See [PLAN.md](PLAN.md) for the roadmap and design, [docs/setup.md](docs/setup.md) to deploy it, and
+[docs/disaster-recovery.md](docs/disaster-recovery.md) for recovering it. Security reports: [SECURITY.md](SECURITY.md).
 
 ## Quick start (local development)
 

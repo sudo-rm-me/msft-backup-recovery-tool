@@ -120,6 +120,42 @@ variable "s3_storage_class" {
   default     = ""
 }
 
+# ---- Network
+
+variable "allowed_ip_ranges" {
+  description = "CIDR ranges allowed to reach the console and API, e.g. [\"203.0.113.0/24\"]. Empty: open to the internet (sign-in is still required). Customer admins open the consent callback in their browser, so allow them too while they consent, or run a permission check afterwards."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for r in var.allowed_ip_ranges : can(cidrhost(r, 0))])
+    error_message = "Use CIDR ranges, e.g. 203.0.113.10/32."
+  }
+}
+
+variable "private_networking" {
+  description = "Put the app in a virtual network with PostgreSQL reachable only inside it and Key Vault behind a private endpoint. New deployments only: PostgreSQL's network mode can't change later."
+  type        = bool
+  default     = false
+}
+
+variable "vnet_address_space" {
+  description = "Address space (a /22) of the virtual network created when private_networking is on."
+  type        = string
+  default     = "10.60.0.0/22"
+
+  validation {
+    condition     = can(cidrhost(var.vnet_address_space, 0)) && endswith(var.vnet_address_space, "/22")
+    error_message = "Use a /22, e.g. 10.60.0.0/22."
+  }
+}
+
+variable "management_ip_ranges" {
+  description = "With private_networking: public IPs or CIDR ranges of where Terraform runs (your machine or pipeline). Key Vault's public endpoint admits only these, so Terraform can manage the master key and certificates."
+  type        = list(string)
+  default     = []
+}
+
 # ---- Sizing
 
 variable "cpu" {

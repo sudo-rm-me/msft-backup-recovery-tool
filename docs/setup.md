@@ -74,7 +74,18 @@ on its own, four folders up from the module. Alternatively, set `image` to a **p
 neither the MBR source nor the Azure CLI is needed when you apply. That's the option for a copied module folder, and for
 pipelines that shouldn't build images.
 
-To make a prebuilt image, build it once per MBR version from a checkout of this repository, into any Azure Container Registry:
+The simplest prebuilt image is the **published release image**. Every release (a `v1.2.3` tag) publishes one to GitHub
+Container Registry, publicly, so nothing needs credentials:
+
+```hcl
+image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.0.0"
+```
+
+Use the same version as the module (the module's `?ref=`, or the release you copied the folder from). The
+[releases page](https://github.com/sudo-rm-me/msft-backup-recovery-tool/releases) lists them.
+
+To use your own registry instead, build the image once per MBR version from a checkout of this repository, into any Azure
+Container Registry:
 
 ```powershell
 # from the MBR repository root, at the version you want
@@ -83,11 +94,12 @@ az acr build --registry <registry name> --image mbr:1.0.0 --file Dockerfile .
 
 | Registry | Set in the module block |
 |---|---|
+| The published release image (public) | `image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.0.0"` |
 | This deployment's own registry (Terraform output `container_registry`, after the first apply) | `image = "<container_registry>/mbr:1.0.0"` |
 | Another Azure Container Registry you have, e.g. a shared one | `image = "contosoacr.azurecr.io/mbr:1.0.0"` and `image_registry_id = "<that registry's resource ID>"`; the module gives the app's identity *AcrPull* on it |
 
-The app always signs in to registries with its managed identity; registries that need a user name and password aren't
-supported. To update MBR, build the new version and change `image`; a new value rolls out a new revision. The first apply with
+The app signs in to Azure registries with its managed identity; private registries that need a user name and password
+aren't supported. To update MBR, build the new version and change `image`; a new value rolls out a new revision. The first apply with
 the deployment's own registry needs an image in it already, so for a brand-new deployment use another registry, or deploy once
 with `image_tag` and switch to `image` afterwards.
 
@@ -210,6 +222,10 @@ These are the settings that depend on where things are in your repository and en
 | `certificate_generation`, `certificate_validity_months` | | `1`, `24` | App certificate renewal (section 11). |
 | `notification_webhooks` | | `[]` | Alert webhooks. Can also be set in the app (section 5). |
 | `partner_tenant_id` | | | Your own tenant ID, for GDAP (section 8). |
+| `allowed_ip_ranges` | | `[]` | CIDR ranges allowed to reach the console and API (section 12). |
+| `private_networking` | | `false` | Virtual network, private PostgreSQL and a Key Vault private endpoint (section 12). New deployments only. |
+| `vnet_address_space` | | `10.60.0.0/22` | The virtual network's /22, with `private_networking`. |
+| `management_ip_ranges` | | `[]` | With `private_networking`: where Terraform runs, so it can reach Key Vault. |
 | `tags` | | `{}` | Tags on every resource. |
 
 ## 4. S3 access (AWS federation, no keys)
@@ -333,8 +349,35 @@ to a new location or in place. It complements this tool's item-level backups and
 - **Certificate renewal:** the app certificates are valid for `certificate_validity_months` (Key Vault emails its contacts 30
   days before expiry). To renew both, increase `certificate_generation` by one and apply. Terraform creates new certificates in
   Key Vault, registers them on the apps and rolls out a revision that uses them, then removes the old ones.
-- **Disaster recovery:** PostgreSQL keeps point-in-time backups for `postgres_backup_retention_days`. Key Vault has purge
-  protection, and Terraform refuses to destroy the vault, the master key or the database (`prevent_destroy`). Backups in S3 are
-  readable only with the Key Vault master key, so protect the vault and the subscription accordingly.
-- **Network:** PostgreSQL accepts connections from Azure services (Consumption Container Apps have no fixed outbound IPs). Only
-  Microsoft Entra identities can sign in, and the app's identity is its only administrator.
+- **Disaster recovery:** see [disaster-recovery.md](disaster-recovery.md). In short: backups are readable only with the Key Vault
+  master key, so keep an offline backup of it; PostgreSQL keeps point-in-time backups for `postgres_backup_retention_days`; and
+  Terraform refuses to destroy the vault, the master key or the database (`prevent_destroy`).
+- **Network:** by default the console is reachable from the internet (sign-in required) and PostgreSQL accepts connections from
+  Azure services, because Consumption Container Apps have no fixed outbound IPs. Only Microsoft Entra identities can sign in to
+  PostgreSQL, and the app's identity is its only administrator. Section 12 locks both down.
+
+## 12. Network lock-down (optional)
+
+**Restrict who can reach the console.** Set `allowed_ip_ranges` to your offices' and VPN's public ranges, e.g.
+`["203.0.113.0/24"]`. Everyone else gets a 403 from Container Apps before reaching MBR. Two things go through the browser
+of someone outside your network, so plan for them:
+- **Admin consent:** after a customer's admin consents, Microsoft sends their browser back to MBR's consent callback. If their IP
+  isn't allowed, the consent is still granted (it happens at Microsoft); the callback just can't record it. Run **Permission
+  check** on the tenant afterwards, and MBR picks it up.
+- **The CLI:** run it from an allowed network.
+
+**Private networking.** `private_networking = true` puts the Container Apps environment in a new virtual network
+(`vnet_address_space`, a /22), makes PostgreSQL reachable only inside it (no public endpoint), and gives Key Vault a private
+endpoint for the app. Key Vault's public endpoint then admits only `management_ip_ranges`: set it to the public IP of wherever
+Terraform runs, because Terraform manages the master key and the certificates through it.
+
+```hcl
+private_networking   = true
+management_ip_ranges = ["198.51.100.7"] # your pipeline's or machine's public IP
+allowed_ip_ranges    = ["203.0.113.0/24"]
+```
+
+Set it on the **first** apply: PostgreSQL's network mode can't change once the server exists, and Terraform refuses to replace
+the server (`prevent_destroy`). To move an existing deployment, deploy a new one with private networking and restore the
+database into it (see [disaster-recovery.md](disaster-recovery.md)). The app still reaches S3, Microsoft Graph and ARM over the
+internet, and the image is still pulled from its registry as before.

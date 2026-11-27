@@ -66,8 +66,8 @@ output "aws_federation_audience_uri" {
 
 output "aws_role_trust_policy" {
   description = "Trust policy for the IAM role: only this deployment's managed identity can assume it."
-  value       = jsonencode({
-    Version   = "2012-10-17"
+  value = jsonencode({
+    Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Principal = { Federated = "arn:aws:iam::${local.aws_account}:oidc-provider/${local.aws_oidc_host}" }
@@ -84,8 +84,8 @@ output "aws_role_trust_policy" {
 
 output "aws_role_permissions_policy" {
   description = "Permissions for the IAM role on the backup bucket."
-  value       = jsonencode({
-    Version   = "2012-10-17"
+  value = jsonencode({
+    Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"

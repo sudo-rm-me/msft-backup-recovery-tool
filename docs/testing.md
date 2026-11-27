@@ -23,10 +23,36 @@ Each test builds its own app with a temporary SQLite database and local storage.
 The fakes model the behavior the code depends on (paging, delta tokens, throttling, long-running operations), not every
 detail of the real services, so a check against a real tenant is still needed before relying on a workload.
 
-## Checking against a test tenant
+## Live smoke tests (test tenant)
 
-There are no automated live tests yet. Until there are, run this checklist against a **test tenant** (never production) after
-deploying with `docs/setup.md`. Use only test data: restores create, change and delete objects.
+`tests/Mbr.LiveTests` runs the real app (temporary database and local storage) against a **test tenant**. It isn't in
+`Mbr.sln`, so `dotnet test` doesn't run it. It checks that both apps sign in and the backup app has every required permission,
+that an Entra and Intune config backup succeeds, and a round trip: it creates a group named `mbr-smoke-*`, backs it up,
+deletes it, restores it from the recycle bin, then deletes and purges it.
+
+Set the tenant and the two apps (their certificates must be consented in that tenant), then run it:
+
+```powershell
+$env:MBR_LIVE_TENANT = "contoso-test.onmicrosoft.com"
+$env:Mbr__Apps__Backup__ClientId = "<backup app id>"
+$env:Mbr__Apps__Backup__CertificatePath = "C:\certs\backup.pfx"
+$env:Mbr__Apps__Restore__ClientId = "<restore app id>"
+$env:Mbr__Apps__Restore__CertificatePath = "C:\certs\restore.pfx"
+dotnet test tests/Mbr.LiveTests
+```
+
+(`Mbr__Apps__*__CertificatePassword` if the PFX has one.) Without `MBR_LIVE_TENANT` every test fails with a message saying what
+to set.
+
+On GitHub, **Actions → Live smoke tests → Run workflow** does the same. It runs in the `live-tests` environment (add required
+reviewers there if you like) and needs these secrets: `MBR_LIVE_TENANT`, `MBR_LIVE_BACKUP_CLIENT_ID`,
+`MBR_LIVE_RESTORE_CLIENT_ID`, `MBR_LIVE_BACKUP_PFX_BASE64`, `MBR_LIVE_RESTORE_PFX_BASE64` (the PFX files, base64) and
+`MBR_LIVE_PFX_PASSWORD` (may be empty).
+
+## Checking against a test tenant by hand
+
+The smoke tests cover the basics. Before relying on a workload, also run this checklist against a **test tenant** (never
+production) after deploying with `docs/setup.md`. Use only test data: restores create, change and delete objects.
 
 1. **Onboard:** add the tenant, grant consent, and check that **Permissions** shows nothing missing (or only the opt-in ones).
 2. **Config backup:** run a backup with every workload and open the snapshot. Each workload should have items and no errors.
