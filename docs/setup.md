@@ -78,11 +78,18 @@ The simplest prebuilt image is the **published release image**. Every release (a
 Container Registry, publicly, so nothing needs credentials:
 
 ```hcl
-image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.0.0"
+image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.1.0"
 ```
 
 Use the same version as the module (the module's `?ref=`, or the release you copied the folder from). The
 [releases page](https://github.com/sudo-rm-me/msft-backup-recovery-tool/releases) lists them.
+
+Each image carries a signed build provenance (which commit and workflow built it) and an SBOM. To check an image before
+deploying it:
+
+```powershell
+gh attestation verify oci://ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.1.0 --owner sudo-rm-me
+```
 
 To use your own registry instead, build the image once per MBR version from a checkout of this repository, into any Azure
 Container Registry:
@@ -94,7 +101,7 @@ az acr build --registry <registry name> --image mbr:1.0.0 --file Dockerfile .
 
 | Registry | Set in the module block |
 |---|---|
-| The published release image (public) | `image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.0.0"` |
+| The published release image (public) | `image = "ghcr.io/sudo-rm-me/msft-backup-recovery-tool:1.1.0"` |
 | This deployment's own registry (Terraform output `container_registry`, after the first apply) | `image = "<container_registry>/mbr:1.0.0"` |
 | Another Azure Container Registry you have, e.g. a shared one | `image = "contosoacr.azurecr.io/mbr:1.0.0"` and `image_registry_id = "<that registry's resource ID>"`; the module gives the app's identity *AcrPull* on it |
 

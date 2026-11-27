@@ -8,7 +8,7 @@ copy of the one thing that can't be recreated, and how to rebuild a deployment.
 | Piece | If it's lost | Protection |
 |---|---|---|
 | **Key Vault master key** (`mbr-master`) | **Every backup becomes unreadable.** Each tenant's data key is wrapped by it. | Purge protection (deleted keys and vaults are recoverable for 90 days), `prevent_destroy` in Terraform, and an offline backup (below). |
-| PostgreSQL (metadata) | MBR forgets its tenants, snapshots, schedules and settings. The backup data in S3 is intact and still decryptable: each tenant's data key is also stored, wrapped by the master key, in `tenants/<tenant id>/key.json` next to its backups. | Point-in-time restore for `postgres_backup_retention_days`, `prevent_destroy`. |
+| PostgreSQL (metadata) | MBR forgets its tenants, snapshots, schedules and settings. The backup data in S3 is intact and still decryptable: each tenant's data key is also stored, wrapped by the master key, in `tenants/<tenant id>/key.json` next to its backups, and the index can be rebuilt from storage (section 3). | Point-in-time restore for `postgres_backup_retention_days`, `prevent_destroy`. |
 | S3 bucket (backup data) | The backups themselves. | S3 versioning and Object Lock (`s3_object_lock_days`); optionally replication to a second region. |
 | App certificates | Can be recreated: bump `certificate_generation` and apply. | Key Vault. |
 | Entra app registrations | Can be recreated by Terraform, but customers then need to consent again (new app IDs). | Terraform state; don't delete them by hand. |
@@ -76,9 +76,18 @@ backup):
 3. Restore PostgreSQL from its point-in-time backup if it still exists. That's the supported path: keep the retention long
    enough to cover how long it would take you to notice a problem.
 
-   If the database is gone for good, the app starts with an empty index and you add the tenants again; new backups work
-   straight away. The old backups are still in S3 and can still be decrypted (master key + `tenants/<tenant id>/key.json`), but
-   MBR has no tool yet to re-import them into a new database, so treat point-in-time restore as essential.
+   If the database is gone for good, rebuild the index from storage: **Settings → Storage → Re-import** on the S3 target (global
+   admins), or `mbr storage import <target id>`. It reads each tenant's `key.json`, the config snapshot manifests and the file and
+   mail journals, and adds what's missing (running it again is safe). What comes back:
+   - tenants, with their original IDs, as *pending consent*: nothing runs for them (backups, retention) until you run a
+     **Permission check**;
+   - every config snapshot, browsable and restorable;
+   - file and mail versions backed up by MBR 1.2 or later (older ones have no journal), except versions retention had already
+     deleted;
+   - not schedules, operators and their roles, tenant settings, restore plans or the audit log: set those up again. Tenant
+     settings start at the defaults, so check retention before re-enabling a tenant.
+
+   The next data backup of each source does a full sync (the delta state isn't in storage), then continues incrementally.
 4. If the Entra app registrations were recreated, customers grant admin consent again (Tenants → consent links).
 
 ## 4. Restoring into a new tenant
@@ -98,7 +107,10 @@ tenant's backups. The old tenant stays in MBR as the source; nothing is written 
    - Restore users and groups first (types `entra.user`, `entra.group`), then everything else, so later plans match them.
 3. **Files and mail:** in the new tenant run a data backup once, so MBR discovers its users and sites. Then, in the old tenant's
    data browser, select what to restore → **Tenant**: the new one. MBR picks the same user (by address, after the domain map) or
-   site (by name) there, or you choose one; items go back to their original paths. With the CLI:
+   site (the same path on the new tenant's SharePoint host, else the same name) there, or you choose one; items go back to their
+   original paths. A user or site MBR hasn't seen there yet is found by discovering the new tenant during the restore. Users
+   who don't exist there at all must be restored first (config restore of `entra.user`) and licensed, so their OneDrive and
+   mailbox get provisioned. With the CLI:
    `mbr data restore -t old-tenant adele@contoso.com /Documents --into new-tenant --map-domain contoso.com=contoso-new.onmicrosoft.com`.
 4. **Not covered:** Azure resources (restored only into the subscription they came from), Microsoft 365 Backup restore points
    (they stay in the tenant that took them), and users synced from on-premises (restore them there).

@@ -27,7 +27,8 @@ public interface IDataSourceBackup
 /// <summary>
 /// Runs data backups for a tenant: every enabled source (or the selected ones), updating each source's status and totals.
 /// </summary>
-public sealed class DataBackupService(MbrDbContext db, IEnumerable<IDataSourceBackup> backups, DataDiscoveryService discovery, StorageTargetResolver targets)
+public sealed class DataBackupService(MbrDbContext db, IEnumerable<IDataSourceBackup> backups, DataDiscoveryService discovery, StorageTargetResolver targets,
+    ITenantContentStore content)
 {
     public async Task<(SourceBackupResult Total, int Sources, int FailedSources)> RunAsync(Tenant tenant, IReadOnlyCollection<Guid>? sourceIds,
         IReadOnlyCollection<DataSourceKind>? kinds, Guid? storageTargetId, IJobContext? job, CancellationToken ct)
@@ -52,6 +53,7 @@ public sealed class DataBackupService(MbrDbContext db, IEnumerable<IDataSourceBa
             if (job != null) await job.ReportProgressAsync((double)i / Math.Max(1, sources.Count), $"{src.Kind}: {src.DisplayName}");
             var handler = backups.FirstOrDefault(b => b.Handles(src.Kind));
             if (handler is null) continue;
+            var started = DateTimeOffset.UtcNow.AddSeconds(-1);
             try
             {
                 var r = await handler.BackupAsync(tenant, src, targetId, job, ct);
@@ -74,6 +76,12 @@ public sealed class DataBackupService(MbrDbContext db, IEnumerable<IDataSourceBa
             src.ItemCount = stats?.Count ?? 0;
             src.TotalBytes = stats?.Bytes ?? 0;
             await db.SaveChangesAsync(ct);
+            try { await DataJournal.WriteAsync(db, content, tenant, src, targetId, started, ct); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // The backup itself is fine; only the database-loss safety net is missing for this run.
+                if (job != null) await job.WarnAsync($"{src.DisplayName}: couldn't write the backup journal: {e.Message}");
+            }
         }
         return (total, sources.Count, failedSources);
     }

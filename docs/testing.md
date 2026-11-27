@@ -16,6 +16,7 @@ Each test builds its own app with a temporary SQLite database and local storage.
 | `AppSettingsTests` | Settings changed in the app: overrides, reset, encrypted secrets, validation, the deployment storage target |
 | `ConfigBackupTests`, `DiffTests` | Config snapshots, schedules, retention, diff and drift alerts |
 | `RestoreTests`, `EntraRestoreTests` | Restore planning, ordering, ID mapping, approval, verification, recycle bin and recreation |
+| `StorageImportTests` | Losing the database: rebuilding tenants, snapshots and file versions from storage with the master key |
 | `CrossTenantTests` | Restoring into another tenant: domain mapping, users, and mail into the same user there |
 | `FileBackupTests`, `MailAndRestoreTests` | OneDrive/SharePoint and mailbox backup, versions, resume and item restore |
 | `AzureTests`, `WorkloadTests` | Azure (ARM templates, RBAC, Policy) and the PowerShell/Graph workloads |
@@ -45,7 +46,9 @@ dotnet test tests/Mbr.LiveTests
 (`Mbr__Apps__*__CertificatePassword` if the PFX has one.) Without `MBR_LIVE_TENANT` every test fails with a message saying what
 to set.
 
-On GitHub, **Actions → Live smoke tests → Run workflow** does the same. It runs in the `live-tests` environment (add required
+On GitHub, **Actions → Live smoke tests → Run workflow** does the same. To set it up, run
+`./tests/Mbr.LiveTests/Set-LiveTestSecrets.ps1` (it asks for the PFX password and stores everything as secrets of the
+`live-tests` environment). It runs in the `live-tests` environment (add required
 reviewers there if you like) and needs these secrets: `MBR_LIVE_TENANT`, `MBR_LIVE_BACKUP_CLIENT_ID`,
 `MBR_LIVE_RESTORE_CLIENT_ID`, `MBR_LIVE_BACKUP_PFX_BASE64`, `MBR_LIVE_RESTORE_PFX_BASE64` (the PFX files, base64) and
 `MBR_LIVE_PFX_PASSWORD` (may be empty).

@@ -61,6 +61,10 @@ public static class FeatureRegistration
         services.AddScoped<IRetentionParticipant, DataRetention>();
         services.AddScoped<IJobHandler, DataDiscoveryJob>();
         services.AddScoped<IJobHandler, DataBackupJob>();
+
+        // Rebuilding the index from storage after losing the database
+        services.AddScoped<Backup.StorageImportService>();
+        services.AddScoped<IJobHandler, Backup.StorageImportJob>();
         return services;
     }
 

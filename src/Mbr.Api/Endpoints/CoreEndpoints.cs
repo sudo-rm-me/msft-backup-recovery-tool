@@ -282,6 +282,17 @@ public static partial class ApiRoutes
             return Results.NoContent();
         });
 
+        // Rebuilds tenants, snapshots and file and mail versions from what's in the target (after losing the database).
+        api.MapPost("/storage-targets/{id:guid}/import", async (Guid id, MbrDbContext db, OperatorContext ops, JobQueue queue, AuditLog audit,
+            HttpContext ctx, CancellationToken ct) =>
+        {
+            await ops.EnsureGlobalAdminAsync(ct);
+            var t = await db.StorageTargets.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new KeyNotFoundException();
+            var job = await queue.EnqueueAsync("storage.import", null, new JsonObject { ["storageTargetId"] = id.ToString() }, ops.Name, maxAttempts: 1, ct: ct);
+            await audit.WriteAsync(ops.Name, "storage.import", null, t.Name, new { job.Id }, Ip(ctx), ct);
+            return Results.Accepted($"/api/jobs/{job.Id}", new { jobId = job.Id });
+        });
+
         api.MapPost("/storage-targets/{id:guid}/test", async (Guid id, MbrDbContext db, StorageTargetResolver resolver, CancellationToken ct) =>
         {
             var t = await db.StorageTargets.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new KeyNotFoundException();

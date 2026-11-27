@@ -97,7 +97,11 @@ public sealed class DataRestoreContext
     }
 }
 
-public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backup.TenantSessionFactory sessions, IEnumerable<IDataRestorer> restorers)
+/// <summary>No source in the target tenant matches; discovery there, a domain map or an explicit target may fix it.</summary>
+public sealed class RestoreTargetNotFoundException(string message) : ArgumentException(message);
+
+public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backup.TenantSessionFactory sessions, IEnumerable<IDataRestorer> restorers,
+    DataDiscoveryService discovery)
 {
     /// <summary>Expands the selection: each item as of the chosen time, folders with everything under them.</summary>
     public async Task<List<RestoreEntry>> ExpandAsync(DataContainer c, IEnumerable<string> itemIds, DateTimeOffset? at, CancellationToken ct)
@@ -132,7 +136,7 @@ public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backu
         var c = await db.DataContainers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == req.ContainerId && x.TenantId == tenant.Id, ct)
                 ?? throw new KeyNotFoundException("Container not found.");
         var source = await db.DataSources.AsNoTracking().FirstAsync(s => s.Id == c.SourceId, ct);
-        var (targetTenant, target) = await ResolveTargetAsync(tenant, source, req, ct);
+        var (targetTenant, target) = await ResolveTargetAsync(tenant, source, req, ct, discover: job);
         if (req.Conflict is not ("rename" or "replace" or "skip")) throw new ArgumentException("Conflict must be rename, replace or skip.");
         var restorer = restorers.FirstOrDefault(r => r.Handles(c.Kind)) ?? throw new InvalidOperationException($"Restoring {c.Kind} isn't supported.");
 
@@ -153,9 +157,24 @@ public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backu
 
     /// <summary>
     /// Where a restore goes: the chosen source, or for another tenant the source there with the same (domain-mapped) address,
-    /// or for sites the same name. Throws when it's ambiguous or missing, so nothing is written to the wrong place.
+    /// or for sites the same URL on the target's SharePoint host, else the same name. Throws when it's ambiguous or missing, so
+    /// nothing is written to the wrong place. With <paramref name="discover"/>, a missing match triggers a discovery in the
+    /// target tenant first (new users and sites).
     /// </summary>
-    public async Task<(Tenant Tenant, DataSource Source)> ResolveTargetAsync(Tenant tenant, DataSource source, DataRestoreRequest req, CancellationToken ct)
+    public async Task<(Tenant Tenant, DataSource Source)> ResolveTargetAsync(Tenant tenant, DataSource source, DataRestoreRequest req,
+        CancellationToken ct, IJobContext? discover = null)
+    {
+        try { return await ResolveOnceAsync(tenant, source, req, ct); }
+        catch (RestoreTargetNotFoundException) when (discover != null && req.TargetTenantId is { } t && t != tenant.Id && req.TargetSourceId is null)
+        {
+            var targetTenant = await db.Tenants.AsNoTracking().FirstAsync(x => x.Id == t, ct);
+            await discover.InfoAsync($"No match for {source.DisplayName} in {targetTenant.DisplayName} yet: discovering its {source.Kind} sources");
+            await discovery.DiscoverAsync(targetTenant, [source.Kind], discover, ct);
+            return await ResolveOnceAsync(tenant, source, req, ct);
+        }
+    }
+
+    private async Task<(Tenant Tenant, DataSource Source)> ResolveOnceAsync(Tenant tenant, DataSource source, DataRestoreRequest req, CancellationToken ct)
     {
         var targetTenant = req.TargetTenantId is { } ttid && ttid != tenant.Id
             ? await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == ttid, ct) ?? throw new KeyNotFoundException("Target tenant not found.")
@@ -168,16 +187,29 @@ public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backu
             target = source;
         else
         {
-            var candidates = await db.DataSources.AsNoTracking().Where(s => s.TenantId == targetTenant.Id && s.Kind == source.Kind).ToListAsync(ct);
-            var domains = Restore.RestoreEngine.EffectiveDomainMap(req.DomainMap, tenant, targetTenant);
-            var matches = source.Kind == DataSourceKind.SharePointSite
-                ? candidates.Where(s => string.Equals(s.DisplayName, source.DisplayName, StringComparison.OrdinalIgnoreCase)).ToList()
-                : candidates.Where(s => source.Address is { Length: > 0 } a && string.Equals(s.Address, domains.Apply(a), StringComparison.OrdinalIgnoreCase)).ToList();
+            var candidates = await db.DataSources.AsNoTracking().Where(s => s.TenantId == targetTenant.Id && s.Kind == source.Kind && !s.Missing).ToListAsync(ct);
+            List<DataSource> matches;
+            if (source.Kind == DataSourceKind.SharePointSite)
+            {
+                // Same path on the target's SharePoint host (contoso.sharepoint.com/sites/x → fabrikam.sharepoint.com/sites/x), else the same name.
+                var mapped = MapSiteUrl(source.Address, candidates);
+                matches = mapped is null ? [] : candidates.Where(s => SameUrl(s.Address, mapped)).ToList();
+                if (matches.Count == 0)
+                    matches = candidates.Where(s => string.Equals(s.DisplayName, source.DisplayName, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            else
+            {
+                var domains = Restore.RestoreEngine.EffectiveDomainMap(req.DomainMap, tenant, targetTenant);
+                matches = candidates.Where(s => source.Address is { Length: > 0 } a && string.Equals(s.Address, domains.Apply(a), StringComparison.OrdinalIgnoreCase)).ToList();
+            }
             target = matches.Count switch
             {
                 1 => matches[0],
-                0 => throw new ArgumentException($"No {source.Kind} matching {source.Address ?? source.DisplayName} in {targetTenant.DisplayName}. " +
-                                                 "Run discovery there, map the domain, or choose the target."),
+                0 => throw new RestoreTargetNotFoundException(source.Kind == DataSourceKind.SharePointSite
+                    ? $"No site matching {source.Address ?? source.DisplayName} in {targetTenant.DisplayName}. Create the site there (or choose another), then try again."
+                    : $"No {(source.Kind == DataSourceKind.Mailbox ? "mailbox" : "OneDrive")} for {source.Address ?? source.DisplayName} in {targetTenant.DisplayName}. " +
+                      "Map the domain, restore the user there first (a config restore of entra.user; their OneDrive and mailbox are " +
+                      "provisioned once they're licensed), or choose the target."),
                 _ => throw new ArgumentException($"Several sources in {targetTenant.DisplayName} match {source.DisplayName}; choose the target."),
             };
         }
@@ -185,6 +217,19 @@ public sealed class DataRestoreService(MbrDbContext db, DataReader reader, Backu
             throw new ArgumentException("Mail, calendar and contacts can only be restored to a mailbox, and files only to OneDrive or SharePoint.");
         return (targetTenant, target);
     }
+
+    /// <summary>The site's URL on the SharePoint host most of the target's sites use; null when either isn't known.</summary>
+    private static string? MapSiteUrl(string? address, List<DataSource> targetSites)
+    {
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var url)) return null;
+        var host = targetSites.Select(s => Uri.TryCreate(s.Address, UriKind.Absolute, out var u) ? u.Host : null)
+            .Where(h => h != null && !h.Contains("-my.", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(h => h!, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+        return host is null ? null : new UriBuilder(url) { Host = host }.Uri.ToString();
+    }
+
+    private static bool SameUrl(string? a, string b) =>
+        a is not null && string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>"restore.data": restores files, folders, mail, events or contacts. Parameters: a <see cref="DataRestoreRequest"/>.</summary>
